@@ -19,3 +19,9 @@ The return value of get() is meant to be used like an rvalue
 and should not be persistently stored anywhere.
 
 ---
+
+## License
+
+The project is registered under the MIT License.
+See `LICENSE.txt` for details.  
+Copyright &copy; 2025 Jonas van den Berg
