@@ -1,5 +1,6 @@
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -118,9 +119,10 @@ TEST(LiveValue, DiesWhenLiveValueIsDestructedBeforeGetReturnValue)
         "");
 }
 
-TEST(LiveValue, SetTimesOutWhenGetReturnValueLivesBeyondItsLifetime)
+TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 {
     LiveValue<TestValue> c(1);
+    c._stop_lifetime_tracking();
     auto ref = c.get(100ms);
     auto start = std::chrono::steady_clock::now();
     EXPECT_ANY_THROW(c.set({ 2 }));
@@ -178,6 +180,8 @@ TEST(LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
         ref->x = 2;
         std::this_thread::sleep_for(50ms);
         auto second_ref = c.get(175ms);
+        // Make sure the first reference is not used beyond its lifetime.
+        ref = nullptr;
         std::this_thread::sleep_for(150ms);
     });
     std::thread t2([&] {
@@ -193,4 +197,105 @@ TEST(LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
     });
     t1.join();
     t2.join();
+}
+
+template <typename U, typename V>
+void log_timestamps(U u, V v)
+{
+    std::cerr
+        << std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+               .count()
+        << ": "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(u).count()
+        << "ms"
+        << " // "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(v).count()
+        << "ms" << std::endl;
+}
+
+TEST(LiveValue, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
+{
+    LiveValue<TestValue> c(1);
+    auto expected_lifetime = 156ms;
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_DEATH(
+        {
+            auto ref = c.get(expected_lifetime);
+            std::this_thread::sleep_for(expected_lifetime + 1000ms);
+        },
+        "");
+    auto delta = std::chrono::steady_clock::now() - start;
+    log_timestamps(delta, expected_lifetime);
+    EXPECT_GT(delta, expected_lifetime);
+    EXPECT_LT(delta, expected_lifetime + 50ms);
+}
+
+TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
+{
+    using namespace std::chrono;
+
+    std::vector<std::thread> threads;
+    LiveValue<TestValue> c(1);
+    c._record_lifetime_history();
+
+    auto call_get = [&](milliseconds lifetime, bool exceed_lifetime = false) {
+        threads.push_back(std::thread([&c, lifetime, exceed_lifetime] {
+            auto ref = c.get(lifetime);
+            auto sleep_time = lifetime;
+            if (exceed_lifetime) {
+                sleep_time += 25ms;
+            } else {
+                sleep_time -= 25ms;
+            }
+            std::this_thread::sleep_for(sleep_time);
+        }));
+    };
+
+    auto pop_history = [&] {
+        auto entry = c._await_lifetime_history_entry();
+        std::cerr << "popped: " << entry.first.count() << "ms / "
+                  << entry.second << std::endl;
+        EXPECT_FALSE(entry.second);
+    };
+
+    auto expect_history = [&](milliseconds value, bool fail = false) {
+        auto entry = c._await_lifetime_history_entry();
+        std::cerr << "expected: " << entry.first.count() << "ms / "
+                  << value.count() << "ms / " << entry.second << std::endl;
+        EXPECT_GT(entry.first.count(), (value - 25ms).count());
+        EXPECT_LT(entry.first.count(), (value + 25ms).count());
+        EXPECT_EQ(entry.second, fail);
+    };
+
+    // Singular get() that does not exceed the lifetime.
+    call_get(100ms, false);
+    pop_history();
+    expect_history(100ms);
+
+    // get() that does not exceeded the lifetime with another get()
+    // that is called while the first one is still active,
+    // but which does exceed the lifetime after the first is destroyed.
+    call_get(150ms, false);
+    std::this_thread::sleep_for(50ms);
+    call_get(150ms, true);
+    pop_history();
+    expect_history(50ms);
+    expect_history(100ms);
+    expect_history(50ms, true);
+
+    // get() that does exceed the lifetime, followed by a get() that doesn't,
+    // but that is retrieved and destroyed during the lifetime of the first.
+    call_get(250ms, true);
+    std::this_thread::sleep_for(50ms);
+    call_get(75ms, false);
+    pop_history();
+    expect_history(50ms);
+    expect_history(75ms);
+    expect_history(125ms, true);
+
+    for (auto& thread : threads) {
+        assert(thread.joinable());
+        thread.join();
+    }
 }
