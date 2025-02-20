@@ -407,10 +407,11 @@ private:
 
 } // namespace ungive::utility
 
+#ifndef UNGIVE_UTILITY_TEST
 #ifdef TRACK_LIFETIMES
 #undef TRACK_LIFETIMES
 #endif
-
 #ifdef LIFETIME_RECORDING
 #undef LIFETIME_RECORDING
 #endif
+#endif // UNGIVE_UTILITY_TEST
