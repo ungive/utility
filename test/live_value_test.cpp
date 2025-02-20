@@ -29,13 +29,13 @@ struct TestValueWithCtor
     int x{ TEST_VALUE_DEFAULT_X };
 };
 
-TEST(Util_LiveValue, ConstructWithDefaultConstructor)
+TEST(LiveValue, ConstructWithDefaultConstructor)
 {
     LiveValue<TestValue> c;
     EXPECT_EQ(TEST_VALUE_DEFAULT_X, c.get()->x);
 }
 
-TEST(Util_LiveValue, ConstructWithMoveConstructor)
+TEST(LiveValue, ConstructWithMoveConstructor)
 {
     int expected = 102;
     TestValue value{ expected };
@@ -43,21 +43,21 @@ TEST(Util_LiveValue, ConstructWithMoveConstructor)
     EXPECT_EQ(expected, c.get()->x);
 }
 
-TEST(Util_LiveValue, ConstructWithCopyConstructor)
+TEST(LiveValue, ConstructWithCopyConstructor)
 {
     TestValue value{ 103 };
     LiveValue<TestValue> c(value);
     EXPECT_EQ(value.x, c.get()->x);
 }
 
-TEST(Util_LiveValue, ConstructWithInitConstructor)
+TEST(LiveValue, ConstructWithInitConstructor)
 {
     int expected = 104;
     LiveValue<TestValue> c(104);
     EXPECT_EQ(expected, c.get()->x);
 }
 
-TEST(Util_LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
+TEST(LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
 {
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
@@ -81,7 +81,7 @@ TEST(Util_LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
     EXPECT_EQ(3, c.get()->x);
 }
 
-TEST(Util_LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
+TEST(LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
 {
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
@@ -107,7 +107,7 @@ TEST(Util_LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
     EXPECT_EQ(4, c.get()->x);
 }
 
-TEST(Util_LiveValue, DiesWhenLiveValueIsDestructedBeforeGetReturnValue)
+TEST(LiveValue, DiesWhenLiveValueIsDestructedBeforeGetReturnValue)
 {
     std::shared_ptr<TestValue> dangling_ref{ nullptr };
     EXPECT_DEATH(
@@ -118,7 +118,7 @@ TEST(Util_LiveValue, DiesWhenLiveValueIsDestructedBeforeGetReturnValue)
         "");
 }
 
-TEST(Util_LiveValue, SetTimesOutWhenGetReturnValueLivesBeyondItsLifetime)
+TEST(LiveValue, SetTimesOutWhenGetReturnValueLivesBeyondItsLifetime)
 {
     LiveValue<TestValue> c(1);
     auto ref = c.get(100ms);
@@ -128,14 +128,14 @@ TEST(Util_LiveValue, SetTimesOutWhenGetReturnValueLivesBeyondItsLifetime)
     EXPECT_GT(delta, 75ms);
 }
 
-TEST(Util_LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
+TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
 {
     LiveValue<TestValue> c(1);
     c.set({ 2 });
     EXPECT_EQ(2, c.get()->x);
 }
 
-TEST(Util_LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
+TEST(LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
 {
     LiveValue<TestValue> c(1);
     auto start = std::chrono::steady_clock::now();
@@ -144,7 +144,7 @@ TEST(Util_LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
     EXPECT_LT(delta, 1ms);
 }
 
-TEST(Util_LiveValue, GetDoesNotBlockWhileSetIsWaiting)
+TEST(LiveValue, GetDoesNotBlockWhileSetIsWaiting)
 {
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
@@ -165,7 +165,7 @@ TEST(Util_LiveValue, GetDoesNotBlockWhileSetIsWaiting)
     t2.join();
 }
 
-TEST(Util_LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
+TEST(LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
 {
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
