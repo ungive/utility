@@ -15,7 +15,7 @@ if(UNGIVE_UTILITY_BUILD_TESTS)
     add_subdirectory(third_party/gtest EXCLUDE_FROM_ALL)
     include(GoogleTest)
     enable_testing()
-    set(TEST_SOURCES test/example_test.cpp)
+    set(TEST_SOURCES test/live_value_test.cpp)
 
     add_executable(ungive_utility_test ${TEST_SOURCES})
     target_compile_definitions(ungive_utility_test PRIVATE UNGIVE_UTILITY_TEST)
