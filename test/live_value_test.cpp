@@ -139,17 +139,6 @@ TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
     EXPECT_EQ(1, value_ref.use_count());
 }
 
-TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
-{
-    LiveValue<TestValue> c(1);
-    c._stop_lifetime_tracking();
-    auto ref = c.get(100ms);
-    auto start = std::chrono::steady_clock::now();
-    EXPECT_ANY_THROW(c.set({ 2 }));
-    auto delta = std::chrono::steady_clock::now() - start;
-    EXPECT_GT(delta, 75ms);
-}
-
 TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
 {
     LiveValue<TestValue> c(1);
@@ -234,6 +223,7 @@ void log_timestamps(U u, V v)
         << "ms" << std::endl;
 }
 
+#ifdef TRACK_LIFETIMES
 TEST(LiveValue, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 {
     LiveValue<TestValue> c(1);
@@ -249,6 +239,18 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
     log_timestamps(delta, expected_lifetime);
     EXPECT_GT(delta, expected_lifetime);
     EXPECT_LT(delta, expected_lifetime + 50ms);
+}
+
+#ifdef LIFETIME_RECORDING
+TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
+{
+    LiveValue<TestValue> c(1);
+    c._stop_lifetime_tracking();
+    auto ref = c.get(100ms);
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_ANY_THROW(c.set({ 2 }));
+    auto delta = std::chrono::steady_clock::now() - start;
+    EXPECT_GT(delta, 75ms);
 }
 
 TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
@@ -315,3 +317,5 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
         thread.join();
     }
 }
+#endif // LIFETIME_RECORDING
+#endif // TRACK_LIFETIMES
