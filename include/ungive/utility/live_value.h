@@ -49,12 +49,8 @@ private:
             std::shared_ptr<std::atomic<bool>> flag, T value)
             : m_callable{ callable }, m_flag{ flag }, m_value{ value }
         {
-            if (m_callable == nullptr) {
-                throw std::invalid_argument("the callable cannot be null");
-            }
-            if (m_flag == nullptr) {
-                throw std::invalid_argument("the flag cannot be null");
-            }
+            assert(m_callable != nullptr);
+            assert(m_flag != nullptr);
         }
 
         inline void operator()() const
