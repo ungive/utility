@@ -108,15 +108,35 @@ TEST(LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
     EXPECT_EQ(4, c.get()->x);
 }
 
-TEST(LiveValue, DiesWhenLiveValueIsDestructedBeforeGetReturnValue)
+TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
 {
-    std::shared_ptr<TestValue> dangling_ref{ nullptr };
-    EXPECT_DEATH(
+    std::shared_ptr<TestValue> value_ref{ nullptr };
+    {
+        std::shared_ptr<TestValue> get_ref{ nullptr };
         {
             LiveValue<TestValue> c(1);
-            dangling_ref = c.get();
-        },
-        "");
+            value_ref = c._value();
+            // There are two reference to the value reference:
+            // One in c and one in this local variable.
+            EXPECT_EQ(2, value_ref.use_count());
+            auto ref = c.get();
+            // There only exists one reference to values returned by get().
+            EXPECT_EQ(1, ref.use_count());
+            // The returned reference should contain a copy of the
+            // shared pointer in order to keep the pointer alive.
+            EXPECT_EQ(3, value_ref.use_count());
+            get_ref = ref;
+            EXPECT_EQ(2, ref.use_count());
+            EXPECT_EQ(2, get_ref.use_count());
+            // 3 or 4?
+            // EXPECT_EQ(3, value_ref.use_count());
+        }
+        EXPECT_EQ(1, get_ref.use_count());
+        // The LiveValue instance has been destructed,
+        // so there's only a reference left in value_ref and get_ref.
+        EXPECT_EQ(2, value_ref.use_count());
+    }
+    EXPECT_EQ(1, value_ref.use_count());
 }
 
 TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
@@ -254,15 +274,11 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 
     auto pop_history = [&] {
         auto entry = c._await_lifetime_history_entry();
-        std::cerr << "popped: " << entry.first.count() << "ms / "
-                  << entry.second << std::endl;
         EXPECT_FALSE(entry.second);
     };
 
     auto expect_history = [&](milliseconds value, bool fail = false) {
         auto entry = c._await_lifetime_history_entry();
-        std::cerr << "expected: " << entry.first.count() << "ms / "
-                  << value.count() << "ms / " << entry.second << std::endl;
         EXPECT_GT(entry.first.count(), (value - 25ms).count());
         EXPECT_LT(entry.first.count(), (value + 25ms).count());
         EXPECT_EQ(entry.second, fail);
