@@ -108,7 +108,7 @@ public:
     }
 
     /**
-     * @brief Returns a value reference and increments the reference count.
+     * @brief Returns a const reference and increments the reference count.
      *
      * The reference count is decremented when the returned value is destructed.
      * It is recommended to not store the return value for a long time
@@ -116,16 +116,19 @@ public:
      * Storing it for a long time is considered bad pratice
      * and may cause substantial delays when calling set().
      *
-     * The returned value is expected to be destructed after
+     * The returned reference is expected to be destructed after
      * the amount of time in the passed lifetime has elapsed.
      * If it is used for longer, calls to set() may throw.
      * The passed lifetime must be greater than zero.
+     *
+     * The value that is reference by the returned value may not be modified.
+     * To modify the stored value use the set() method instead.
      *
      * @param lifetime How long the returned value will be used at most.
      *
      * @returns A reference-counted pointer to the internally stored value.
      */
-    std::shared_ptr<T> get(
+    std::shared_ptr<const T> get(
         std::chrono::milliseconds lifetime = LiveValue::default_get_lifetime)
     {
         if (lifetime <= std::chrono::milliseconds::zero()) {
