@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 // Track get() lifetimes during debugging.
@@ -38,7 +39,40 @@ template <typename T>
 class LiveValue
 {
 private:
-    LiveValue(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
+    // Represents a destructor for a value returned by get().
+    // The destructor is a callable that is only called when enabled by a flag
+    // and is accompanied by a value that is stored alognside the destructor.
+    template <typename T>
+    struct GetDestructor
+    {
+        GetDestructor(std::function<void()> callable,
+            std::shared_ptr<std::atomic<bool>> flag, T value)
+            : m_callable{ callable }, m_flag{ flag }, m_value{ value }
+        {
+            if (m_callable == nullptr) {
+                throw std::invalid_argument("the callable cannot be null");
+            }
+            if (m_flag == nullptr) {
+                throw std::invalid_argument("the flag cannot be null");
+            }
+        }
+
+        inline void operator()() const
+        {
+            if (m_flag->load()) {
+                m_callable();
+            }
+        }
+
+    private:
+        const std::shared_ptr<std::atomic<bool>> m_flag{ nullptr };
+        const std::function<void()> m_callable{ nullptr };
+        const T m_value;
+    };
+
+    LiveValue(std::shared_ptr<T>&& ptr)
+        : m_value{ std::move(ptr) },
+          m_active{ std::make_shared<std::atomic<bool>>(true) }
     {
 #ifdef TRACK_LIFETIMES
         m_lifetime_thread = std::thread(&LiveValue::track_lifetimes, this);
@@ -66,14 +100,9 @@ public:
 
     ~LiveValue()
     {
-        // TODO wrap all of this in a shared_ptr and pass the shared_ptr
-        // to each called that calls get(), so that there's a reference to it
-        // as long as a returned value from get() exists.
-        // that way we don't have to worry about deleted memory possibly
-        // being used somewhere in the program.
-
-        const std::lock_guard lock(m_mutex);
-        assert(m_refs == 0 && "dangling get references exist");
+        // None of the destructors from references returned by get() should
+        // be called anymore, since this class instance is now destroyed.
+        m_active->store(false);
 
 #ifdef TRACK_LIFETIMES
         stop_lifetime_thread();
@@ -116,6 +145,7 @@ public:
         const std::lock_guard lock(m_mutex);
         m_refs += 1;
         auto timepoint = std::chrono::steady_clock::now() + lifetime;
+        m_set_wait = std::max(m_set_wait, timepoint);
 
 #ifdef TRACK_LIFETIMES
         auto destructor =
@@ -130,9 +160,14 @@ public:
         auto destructor = std::bind(&LiveValue<T>::get_dtor, this);
 #endif // TRACK_LIFETIMES
 
-        std::shared_ptr<T> result(m_value.get(), destructor);
-        m_set_wait = std::max(m_set_wait, timepoint);
-        return result;
+        // Store a reference to the internal shared pointer alongside
+        // the manually wrapped raw pointer so that the reference count
+        // is still incremented, we can set a custom destructor here and
+        // the raw pointer is guaranteed to never point to deleted memory.
+        // Additional the active flag ensures that the destructor is only
+        // called while this calls instance has not been destructed.
+        return std::shared_ptr<T>(m_value.get(),
+            std::bind(GetDestructor(destructor, m_active, m_value)));
     }
 
     /**
@@ -140,11 +175,6 @@ public:
      *
      * Blocks until all references returned from get() are destroyed
      * or the operation times out after the given timeout duration.
-     *
-     * The timeout must be larger than zero.
-     * The default timeout is sufficiently large to account for references
-     * from get() to be stored temporarily with possibly somewhat long-running
-     * operations, but small enough for the operation to not block forever.
      *
      * @param value The value to set.
      *
@@ -235,6 +265,16 @@ private:
     // A pointer to the stored value. The pointer is never modified or replaced.
     // The value pointed to by the pointer may be be modified though.
     const std::shared_ptr<T> m_value{};
+
+    // Holds whether this live value instance is active and the destructor
+    // for references returned by get() is safe to be called.
+    const std::shared_ptr<std::atomic<bool>> m_active{};
+
+#ifdef UNGIVE_UTILITY_TEST
+public:
+    // Returns a copy of the internally stored value.
+    inline decltype(m_value) _value() const { return m_value; }
+#endif // UNGIVE_UTILITY_TEST
 
 #ifdef TRACK_LIFETIMES
 
