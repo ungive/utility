@@ -66,9 +66,7 @@ private:
         const T m_value;
     };
 
-    LiveValue(std::shared_ptr<T>&& ptr)
-        : m_value{ std::move(ptr) },
-          m_active{ std::make_shared<std::atomic<bool>>(true) }
+    LiveValue(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
     {
 #ifdef TRACK_LIFETIMES
         m_lifetime_thread = std::thread(&LiveValue::track_lifetimes, this);
@@ -264,7 +262,9 @@ private:
 
     // Holds whether this live value instance is active and the destructor
     // for references returned by get() is safe to be called.
-    const std::shared_ptr<std::atomic<bool>> m_active{};
+    const std::shared_ptr<std::atomic<bool>> m_active{
+        std::make_shared<std::atomic<bool>>(true)
+    };
 
 #ifdef UNGIVE_UTILITY_TEST
 public:
