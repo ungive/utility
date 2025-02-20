@@ -126,8 +126,9 @@ TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
             get_ref = ref;
             EXPECT_EQ(2, ref.use_count());
             EXPECT_EQ(2, get_ref.use_count());
-            // TODO 3 or 4?
-            // EXPECT_EQ(3, value_ref.use_count());
+            // Incrementing the reference returned by get()
+            // should not copy the value reference again.
+            EXPECT_EQ(3, value_ref.use_count());
         }
         EXPECT_EQ(1, get_ref.use_count());
         // The LiveValue instance has been destructed,
