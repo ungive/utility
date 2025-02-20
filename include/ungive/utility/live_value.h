@@ -81,7 +81,7 @@ public:
         std::chrono::milliseconds lifetime = LiveValue::default_get_lifetime)
     {
         // TODO during debugging/development:
-        // track that each returned value is destructed before it lifetime ends.
+        // track that each reference is destructed before its lifetime ends.
         // spin up another thread that checks this. that should obviously
         // not be done during production (too much overhead).
 
@@ -120,6 +120,7 @@ public:
         std::unique_lock lock(m_mutex);
         decltype(m_set_wait) timepoint{};
         bool ok{ false };
+
         // Loop in case the timepoint has been updated by another get() call.
         do {
             timepoint = m_set_wait;
@@ -127,10 +128,24 @@ public:
                 return m_refs == 0;
             });
         } while (!ok && timepoint < m_set_wait);
+
         if (!ok) {
             throw std::runtime_error("a reference is used beyond its lifetime");
         }
         *m_value = std::move(value);
+    }
+
+    /**
+     * @brief Atomically sets the internal value to the given value.
+     *
+     * @see LiveValue::set
+     *
+     * @param value The value to set.
+     */
+    template <typename... Args>
+    inline void set(Args&&... args)
+    {
+        set(T(std::forward<Args>(args)...));
     }
 
 private:
