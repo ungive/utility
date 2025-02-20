@@ -131,8 +131,13 @@ TEST(LiveValue, SetTimesOutWhenGetReturnValueLivesBeyondItsLifetime)
 TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
 {
     LiveValue<TestValue> c(1);
-    c.set({ 2 });
+    c.set({ 2 }); // move
     EXPECT_EQ(2, c.get()->x);
+    TestValue other{ 3 };
+    c.set(other); // const-reference
+    EXPECT_EQ(3, c.get()->x);
+    c.set(4); // forward arguments to constructor
+    EXPECT_EQ(4, c.get()->x);
 }
 
 TEST(LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
