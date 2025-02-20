@@ -121,9 +121,6 @@ public:
      * If it is used for longer, calls to set() may throw.
      * The passed lifetime must be greater than zero.
      *
-     * The return value must not be stored beyond the lifetime
-     * of this class instance, otherwise deleted memory may be used.
-     *
      * @param lifetime How long the returned value will be used at most.
      *
      * @returns A reference-counted pointer to the internally stored value.
