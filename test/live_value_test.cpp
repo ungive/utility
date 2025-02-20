@@ -1,5 +1,6 @@
 #include <chrono>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -63,8 +64,7 @@ TEST(LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(125ms);
-        ref->x = 2;
-        // Pretend it takes this long to update the value.
+        // Pretend it takes this long to use the value.
         std::this_thread::sleep_for(100ms);
     });
     std::thread t2([&] {
@@ -86,13 +86,11 @@ TEST(LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
 {
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
-        std::shared_ptr<TestValue> copied_ref{ nullptr };
+        std::shared_ptr<const TestValue> copied_ref{ nullptr };
         {
             auto ref = c.get(125ms);
-            ref->x = 2;
             copied_ref = ref;
         }
-        copied_ref->x = 3;
         std::this_thread::sleep_for(100ms);
     });
     std::thread t2([&] {
@@ -112,7 +110,7 @@ TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
 {
     std::shared_ptr<TestValue> value_ref{ nullptr };
     {
-        std::shared_ptr<TestValue> get_ref{ nullptr };
+        std::shared_ptr<const TestValue> get_ref{ nullptr };
         {
             LiveValue<TestValue> c(1);
             value_ref = c._value();
@@ -128,7 +126,7 @@ TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
             get_ref = ref;
             EXPECT_EQ(2, ref.use_count());
             EXPECT_EQ(2, get_ref.use_count());
-            // 3 or 4?
+            // TODO 3 or 4?
             // EXPECT_EQ(3, value_ref.use_count());
         }
         EXPECT_EQ(1, get_ref.use_count());
@@ -151,6 +149,13 @@ TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
     EXPECT_EQ(4, c.get()->x);
 }
 
+TEST(LiveValue, GetValueCannotBeModified)
+{
+    LiveValue<TestValue> c(1);
+    auto ref = c.get();
+    static_assert(std::is_const_v<decltype(ref)::element_type>);
+}
+
 TEST(LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
 {
     LiveValue<TestValue> c(1);
@@ -165,7 +170,6 @@ TEST(LiveValue, GetDoesNotBlockWhileSetIsWaiting)
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(125ms);
-        ref->x = 2;
         std::this_thread::sleep_for(100ms);
         // Set is waiting, attempt to call get() here. It should not block.
         auto start = std::chrono::steady_clock::now();
@@ -186,7 +190,6 @@ TEST(LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
     LiveValue<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(75ms);
-        ref->x = 2;
         std::this_thread::sleep_for(50ms);
         auto second_ref = c.get(175ms);
         // Make sure the first reference is not used beyond its lifetime.
