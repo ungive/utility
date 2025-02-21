@@ -30,7 +30,8 @@ value.watch([](Data const& data) {
 value.get()->x; // returns 1 (blocks any set calls)
 value.set({ 2 }); // sets x to 2 (blocking)
 value.get()->x; // returns 2
-// auto ref = value.get(); // do not do this
+// std::shared_ptr<const Data> ptr = value.get(); // do not do this
+// Data const& ref = *value.get(); // do not do this either!
 ```
 
 ---
