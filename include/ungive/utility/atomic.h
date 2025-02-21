@@ -25,21 +25,35 @@
 namespace ungive::utility
 {
 
+// FIXME increase default get lifetime
+
 /**
  * @brief Wraps a value that can be updated atomically from multiple threads.
  *
- * Values can be retrieved by reference (without copying)
- * and can be updated whenever there is no reference to it in active use.
- * Whenver a reference to the value is retrieved via get() any calls to set()
- * block until all returned references from get() have been destructed.
+ * Values can be retrieved by pointer (without copying) and
+ * can be updated whenever there is no pointer to it in active use.
+ * Whenever a pointer to the value is retrieved via Atomic::get()
+ * any calls to Atomic::set() block until all returned pointers
+ * from Atomic::get() have been destructed.
  *
  * @tparam T The value type.
  */
-template <typename T>
+template <typename T, size_t DefaultGetLifetimeMillis = 100>
 class Atomic
 {
 private:
-    // Represents a destructor for a value returned by get().
+    using self_type = Atomic<T, DefaultGetLifetimeMillis>;
+
+    static constexpr inline bool valid_lifetime(
+        std::chrono::milliseconds const& lifetime)
+    {
+        return lifetime > std::chrono::milliseconds::zero();
+    }
+
+    static_assert(Atomic::valid_lifetime(
+        std::chrono::milliseconds{ DefaultGetLifetimeMillis }));
+
+    // Represents a destructor for a value returned by Atomic::get().
     // The destructor is a callable that is only called when enabled by a flag
     // and is accompanied by a shared pointer to the atomically wrapped value.
     struct GetDestructor
@@ -74,11 +88,12 @@ private:
     }
 
 public:
+    // The type of the stored value.
     using value_type = T;
 
     // The default lifetime for returned get values.
     static constexpr auto default_get_lifetime =
-        std::chrono::milliseconds{ 100 };
+        std::chrono::milliseconds{ DefaultGetLifetimeMillis };
 
     Atomic() : Atomic(std::make_shared<T>()) {}
 
@@ -115,28 +130,88 @@ public:
      * It is recommended to not store the returned shared pointer
      * for a long time and instead only treat it as a temporary rvalue.
      * Storing it for a longer than needed is considered bad pratice
-     * and may cause substantial delays when calling set().
+     * and may cause substantial delays when calling Atomic::set().
+     *
+     * The returned pointer is expected to be destructed after
+     * the amount of time in Atomic::default_get_lifetime has elapsed.
+     * If it is used for longer, calls to Atomic::set() may throw an exception.
+     * Never store a reference to the value that is pointed to by the
+     * returned pointer, as that eliminates any thread-safety guarantees.
+     * The value that is pointed to by the returned value must not be modified.
+     * To modify the stored value use the Atomic::set() method instead.
+     *
+     * @returns A reference-counted pointer to the internally stored value.
+     */
+    inline std::shared_ptr<const T> get()
+    {
+        return internal_get(Atomic::default_get_lifetime);
+    }
+
+    /**
+     * @brief Returns a const value pointer and increments the reference count.
      *
      * The returned pointer is expected to be destructed after
      * the amount of time in the passed lifetime has elapsed.
-     * If it is used for longer, calls to set() may throw an exception.
      * The passed lifetime must be greater than zero.
-     * Never store a reference to the value that is pointed to by the
-     * returned pointer, as that elimiantes any thread-safety guarantees.
-     * The value that is pointed to by the returned value must not be modified.
-     * To modify the stored value use the set() method instead.
+     *
+     * @see Atomic::get
      *
      * @param lifetime How long the returned value will be used at most.
      *
      * @returns A reference-counted pointer to the internally stored value.
      */
-    std::shared_ptr<const T> get(
-        std::chrono::milliseconds lifetime = Atomic::default_get_lifetime)
+    std::shared_ptr<const T> get(std::chrono::milliseconds lifetime)
     {
-        if (lifetime <= std::chrono::milliseconds::zero()) {
+        if (!valid_lifetime(lifetime)) {
             throw std::invalid_argument(
                 "the lifetime must be greater than zero");
         }
+        return internal_get(lifetime);
+    }
+
+    /**
+     * @brief Atomically sets the internal value to the given value.
+     *
+     * Blocks until all references returned from Atomic::get() are destroyed
+     * or the operation times out after the given timeout duration.
+     *
+     * @param value The value to set.
+     *
+     * @throws std::runtime_error when a reference returned
+     * by Atomic::get() is used beyond it's promised lifetime.
+     */
+    inline void set(T&& value) { internal_set(std::move(value)); }
+
+    /**
+     * @brief Atomically sets the internal value to the given value.
+     *
+     * @see Atomic::set
+     *
+     * @param args Constructor arguments for the value.
+     */
+    template <typename... Args>
+    inline void set(Args&&... args)
+    {
+        internal_set(T(std::forward<Args>(args)...));
+    }
+
+    /**
+     * @brief Sets a callback for when the value is changed with Atomic::set().
+     *
+     * The callback must not call any instance methods of this class.
+     *
+     * @param callback Function that should be called on value changes.
+     */
+    void watch(std::function<void(T const&)> callback)
+    {
+        const std::lock_guard lock(m_mutex);
+        m_callback = callback;
+    }
+
+private:
+    std::shared_ptr<const T> internal_get(std::chrono::milliseconds lifetime)
+    {
+        assert(valid_lifetime(lifetime));
 
         const std::lock_guard lock(m_mutex);
         m_refs += 1;
@@ -145,7 +220,7 @@ public:
 
 #ifdef TRACK_LIFETIMES
         auto destructor =
-            std::bind(&Atomic<T>::get_dtor_tracking, this, timepoint);
+            std::bind(&self_type::get_dtor_tracking, this, timepoint);
         {
             const std::lock_guard lock(m_lifetime_mutex);
             m_lifetime_expirations.insert(timepoint);
@@ -153,7 +228,7 @@ public:
             m_lifetime_cv.notify_all();
         }
 #else
-        auto destructor = std::bind(&Atomic<T>::get_dtor, this);
+        auto destructor = std::bind(&self_type::get_dtor, this);
 #endif // TRACK_LIFETIMES
 
         // Store a reference to the internal shared pointer alongside
@@ -166,18 +241,7 @@ public:
             std::bind(GetDestructor(destructor, m_active, m_value)));
     }
 
-    /**
-     * @brief Atomically sets the internal value to the given value.
-     *
-     * Blocks until all references returned from get() are destroyed
-     * or the operation times out after the given timeout duration.
-     *
-     * @param value The value to set.
-     *
-     * @throws std::runtime_error when a reference returned from get()
-     * is used beyond it's promised lifetime.
-     */
-    void set(T&& value)
+    void internal_set(T&& value)
     {
         std::unique_lock lock(m_mutex);
         decltype(m_set_wait) timepoint{};
@@ -201,34 +265,9 @@ public:
     }
 
     /**
-     * @brief Atomically sets the internal value to the given value.
+     * @brief Handler for the destruction of values returned by Atomic::get().
      *
-     * @see Atomic::set
-     *
-     * @param args Constructor arguments for the value.
-     */
-    template <typename... Args>
-    inline void set(Args&&... args)
-    {
-        set(T(std::forward<Args>(args)...));
-    }
-
-    /**
-     * @brief Sets a callback for when the value is changed with set().
-     *
-     * The callback must not call any instance methods of this class.
-     *
-     * @param callback Function that should be called on value changes.
-     */
-    void watch(std::function<void(T const&)> callback)
-    {
-        const std::lock_guard lock(m_mutex);
-        m_callback = callback;
-    }
-
-private:
-    /**
-     * @brief Handler for the destruction of values returned by get().
+     * Decrements the reference count and notifies any Atomic::set() calls.
      */
     void get_dtor()
     {
@@ -280,7 +319,7 @@ private:
     const std::shared_ptr<T> m_value{};
 
     // Holds whether this Atomic instance is active and the destructor
-    // for references returned by get() is safe to be called.
+    // for references returned by Atomic::get() is safe to be called.
     const std::shared_ptr<std::atomic<bool>> m_active{
         std::make_shared<std::atomic<bool>>(true)
     };
