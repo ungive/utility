@@ -241,22 +241,52 @@ private:
         auto destructor = std::bind(&self_type::get_dtor, this);
 #endif // TRACK_LIFETIMES
 
-        // Store a reference to the internal shared pointer alongside
+        // Store a copy of the internal shared pointer alongside
         // the manually wrapped raw pointer so that the reference count
         // is still incremented, we can set a custom destructor here and
         // the raw pointer is guaranteed to never point to deleted memory.
-        // Additional the active flag ensures that the destructor is only
-        // called while this calls instance has not been destructed.
+        // Additionally the active flag ensures that the destructor is only
+        // called while this class instance has not been destructed.
         return std::shared_ptr<T>(m_value.get(),
             std::bind(GetDestructor(destructor, m_active, m_value)));
     }
 
+    enum class WaitResult
+    {
+        Ok,
+        Outdated,
+        Timeout
+    };
+
     void internal_set(T&& value)
     {
         std::unique_lock lock(m_mutex);
+        WaitResult result = wait(lock);
+        switch (result) {
+        case WaitResult::Ok:
+            break;
+        case WaitResult::Outdated:
+            return;
+        case WaitResult::Timeout:
+            throw std::runtime_error("a reference is used beyond its lifetime");
+        default:
+            assert(false);
+            throw std::runtime_error("impossible case");
+        }
+        *m_value = std::move(value);
+        if (m_callback) {
+            m_callback(*m_value);
+        }
+        m_set_latest = clock::time_point::min();
+        m_set_cv.notify_all();
+    }
+
+    WaitResult wait(std::unique_lock<std::mutex>& lock)
+    {
         clock::time_point call_time{ clock::now() };
         clock::time_point deadline{};
         bool ok{ false };
+
         m_set_latest = std::max(m_set_latest, call_time);
 
         while (true) {
@@ -288,7 +318,7 @@ private:
                 // Another more recent set call has made its changes,
                 // therefore we can return immediately.
                 assert(ok);
-                return;
+                return WaitResult::Outdated;
 
             } else if (!a && b && !c) { // 010: timeout
                 // Data cannot be set, but this is the latest set call.
@@ -336,16 +366,7 @@ private:
             throw std::runtime_error("impossible state");
         }
 
-        if (!ok) {
-            throw std::runtime_error("a reference is used beyond its lifetime");
-        }
-        *m_value = std::move(value);
-        if (m_callback) {
-            m_callback(*m_value);
-        }
-
-        m_set_latest = clock::time_point::min();
-        m_set_cv.notify_all();
+        return ok ? WaitResult::Ok : WaitResult::Timeout;
     }
 
     /**
