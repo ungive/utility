@@ -20,8 +20,9 @@ The return value of get() is meant to be used like an rvalue
 and should not be persistently stored anywhere.
 
 ```cpp
-struct Data { int x = 1; };
+struct Data { int x = 1; int y = 2; };
 Atomic<Data> value;
+
 // all of the following statements are thread-safe:
 value.watch([](Data const& data) {
     // this is called with each successful set() call
@@ -36,8 +37,16 @@ value.set({ 2 }); // attempts to set and blocks
 // the value will be set to the newer one passed by the more recent call
 value.set({ 3 }); // returns true, the previous set call returns false
 value.get()->x; // yields 3
-// std::shared_ptr<const Data> ptr = value.get(); // do not do this
-// Data const& ref = *value.get(); // do not do this either!
+
+// only do this when the struct has related values that must be read together
+// Reading x and y with two separate get() calls may yield unrelated values!
+std::shared_ptr<const Data> ptr = value.get();
+auto point = std::make_pair(ptr->x, ptr->y);
+ptr = nullptr; // destroy the reference
+
+// Absolutely do not do this! The pointer is destructed, which allows set()
+// calls to modify the data. The following reference is not thread-safe.
+Data const& ref = *value.get(); // danger!
 ```
 
 ---
