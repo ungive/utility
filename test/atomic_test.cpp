@@ -313,8 +313,8 @@ TEST(Atomic, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 
     auto expect_history = [&](milliseconds value, bool fail = false) {
         auto entry = c._await_lifetime_history_entry();
-        EXPECT_GT(entry.first.count(), (value - 25ms).count());
-        EXPECT_LT(entry.first.count(), (value + 25ms).count());
+        EXPECT_GE(entry.first.count(), (value - 25ms).count());
+        EXPECT_LE(entry.first.count(), (value + 25ms).count());
         EXPECT_EQ(entry.second, fail);
     };
 
@@ -503,8 +503,6 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
     }
 }
 
-// TODO no need to make lock_guard const.
-// TODO EXPECT_GT/LT to GE/LE
 // TODO refactor internal_set which got pretty large
 // TODO assert which code paths have been executed in set?
 // TODO return boolean whether set was successful?
