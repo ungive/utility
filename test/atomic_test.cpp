@@ -1,4 +1,5 @@
 #include <chrono>
+#include <random>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -399,4 +400,111 @@ TEST(Atomic, PassedDefaultGetLifeTimeIsUsedAsLifetimeForGetWithoutArguments)
     EXPECT_LT(delta, c.default_get_lifetime + 25ms);
 }
 
-// TODO set() priority? later calls should be prioritized over older  ones!
+TEST(Atomic, SetPrioritizesDataFromTheLatestCall)
+{
+    constexpr auto expected = 100;
+    Atomic<TestValue> c(1);
+    std::thread t1([&] {
+        auto ref = c.get(125ms);
+        std::this_thread::sleep_for(100ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(25ms);
+        c.set({ 2 });
+    });
+    std::thread t3([&] {
+        std::this_thread::sleep_for(50ms);
+        c.set({ 3 });
+    });
+    std::thread t4([&] {
+        std::this_thread::sleep_for(75ms);
+        c.set({ expected });
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    EXPECT_EQ(expected, c.get()->x);
+}
+
+TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
+{
+    constexpr auto expected = 100;
+    Atomic<TestValue> c(1);
+    std::thread t1([&] {
+        auto ref = c.get(125ms);
+        std::this_thread::sleep_for(100ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(25ms);
+        c.set({ 2 });
+        EXPECT_EQ(expected, c.get()->x);
+    });
+    std::thread t3([&] {
+        std::this_thread::sleep_for(50ms);
+        c.set({ 3 });
+        EXPECT_EQ(expected, c.get()->x);
+    });
+    std::thread t4([&] {
+        std::this_thread::sleep_for(75ms);
+        c.set({ expected });
+        EXPECT_EQ(expected, c.get()->x);
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+}
+
+TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
+{
+    constexpr auto expected = 100;
+    constexpr auto n_threads = 32;
+    // The threads shouldn't set the value to the expected one.
+    assert(n_threads < expected / 2);
+    std::random_device dev;
+    std::mt19937 rng(dev());
+    std::uniform_int_distribution<std::mt19937::result_type> dist(1, 50);
+    Atomic<TestValue> c(1);
+    std::vector<std::thread> threads;
+    threads.push_back(std::thread([&] {
+        auto ref = c.get(125ms);
+        std::this_thread::sleep_for(100ms);
+    }));
+    std::mutex mutex;
+    std::condition_variable cv;
+    size_t n_ready{ 0 };
+    for (int i = 0; i < n_threads; i++) {
+        threads.push_back(std::thread([&] {
+            auto n = dist(rng);
+            std::this_thread::sleep_for(std::chrono::milliseconds{ n });
+            {
+                std::lock_guard lock(mutex);
+                n_ready += 1;
+                cv.notify_one();
+            }
+            c.set({ int(2) + i }); // start with 2
+            EXPECT_EQ(expected, c.get()->x);
+        }));
+    }
+    {
+        std::unique_lock lock(mutex);
+        auto ok = cv.wait_for(lock, 1s, [&] {
+            return n_ready == n_threads;
+        });
+        ASSERT_TRUE(ok);
+    }
+    std::this_thread::sleep_for(1ms);
+    c.set({ expected });
+    EXPECT_EQ(expected, c.get()->x);
+    for (auto& thread : threads) {
+        assert(thread.joinable());
+        thread.join();
+    }
+}
+
+// TODO no need to make lock_guard const.
+// TODO EXPECT_GT/LT to GE/LE
+// TODO refactor internal_set which got pretty large
+// TODO assert which code paths have been executed in set?
+// TODO return boolean whether set was successful?
