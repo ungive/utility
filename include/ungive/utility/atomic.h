@@ -22,6 +22,11 @@
 #include <deque>
 #endif
 
+#if defined(UNGIVE_UTILITY_TEST)
+#define WAIT_CODEPATHS
+#include <unordered_set>
+#endif
+
 namespace ungive::utility
 {
 
@@ -290,6 +295,40 @@ private:
         return true;
     }
 
+#ifdef UNGIVE_UTILITY_TEST
+    // Only make this enum visible in tests.
+public:
+#else
+private:
+#endif
+    // This should get optimized away in non-test builds,
+    // since neither the type nor its values are used anywhere.
+    enum class WaitCodepath
+    {
+        SetWithLatestData = 0b110,
+        NoSetWithOutdatedData = 0b001, // and 101
+        NoSetTimeoutLatest = 0b010,
+        NoSetTimeoutOtherLatest = 0b000,
+        NoSetDelayOtherLatest = 0b100,
+        UpdatedDeadline = 0b1000,
+    };
+
+#ifdef WAIT_CODEPATHS
+private:
+    std::unordered_set<WaitCodepath> m_wait_codepaths{};
+
+public:
+    std::unordered_set<WaitCodepath> const& _wait_codepaths() const
+    {
+        return m_wait_codepaths;
+    }
+
+#define wait_codepath(path) m_wait_codepaths.insert(path)
+#else
+#define wait_codepath(path)
+#endif // WAIT_CODEPATHS
+
+private:
     WaitResult wait(std::unique_lock<std::mutex>& lock)
     {
         clock::time_point call_time{ clock::now() };
@@ -307,6 +346,7 @@ private:
             if (!ok && deadline < m_set_deadline) {
                 // The condition is not satisfied and the deadline was updated.
                 // Since there is more time, simply iterate and wait longer.
+                wait_codepath(WaitCodepath::UpdatedDeadline);
                 continue;
             }
 
@@ -319,23 +359,27 @@ private:
             auto c = m_set_latest == clock::time_point::min();
 
             if (a && b && !c) { // 110: ok
+                wait_codepath(WaitCodepath::SetWithLatestData);
                 // Data can be set and this set call contains the latest data.
                 assert(ok);
                 break;
 
             } else if (!b && c) { // 001 / 101: ok
+                wait_codepath(WaitCodepath::NoSetWithOutdatedData);
                 // Another more recent set call has made its changes,
                 // therefore we can return immediately.
                 assert(ok);
                 return WaitResult::Outdated;
 
             } else if (!a && b && !c) { // 010: timeout
+                wait_codepath(WaitCodepath::NoSetTimeoutLatest);
                 // Data cannot be set, but this is the latest set call.
                 // It has timed out and an exception needs to be thrown.
                 assert(!ok);
                 break;
 
             } else if (!a && !b && !c) { // 000: timeout
+                wait_codepath(WaitCodepath::NoSetTimeoutOtherLatest);
                 // This set call has timed out and data cannot be set.
                 // Additionally, there is another set call that is more recent
                 // and whose data should be set instead, but since the deadline
@@ -346,6 +390,7 @@ private:
                 break;
 
             } else if (a && !b && !c) { // 100: timeout
+                wait_codepath(WaitCodepath::NoSetDelayOtherLatest);
                 // Data can be set, but there is another set call that
                 // is more recent and whose data should be set instead.
                 // Additionally this set call has timed out
@@ -377,6 +422,8 @@ private:
 
         return ok ? WaitResult::Ok : WaitResult::Timeout;
     }
+
+#undef wait_codepath
 
     /**
      * @brief Handler for the destruction of values returned by Atomic::get.
@@ -579,5 +626,8 @@ private:
 #endif
 #ifdef LIFETIME_RECORDING
 #undef LIFETIME_RECORDING
+#endif
+#ifdef WAIT_CODEPATHS
+#undef WAIT_CODEPATHS
 #endif
 #endif // UNGIVE_UTILITY_TEST
