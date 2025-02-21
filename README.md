@@ -24,12 +24,17 @@ struct Data { int x = 1; };
 Atomic<Data> value;
 // all of the following statements are thread-safe:
 value.watch([](Data const& data) {
-    // called during each set() call
-    data.x; // returns 2
+    // this is called with each successful set() call
+    data.x; // yields 3 with the last set() call
 });
-value.get()->x; // returns 1 (blocks any set calls)
-value.set({ 2 }); // sets x to 2 (blocking)
-value.get()->x; // returns 2
+// get() blocks any set calls until the return value is destructed
+value.get()->x; // yields 1 (default value)
+// assume the following set() call blocks until the set() call after it:
+value.set({ 2 }); // attempts to set and blocks
+// another set call is made while the previous one is blocking
+// the value will be set to the newer one passed by the more recent call
+value.set({ 3 }); // returns true, the previous set call returns false
+value.get()->x; // yields 3
 // std::shared_ptr<const Data> ptr = value.get(); // do not do this
 // Data const& ref = *value.get(); // do not do this either!
 ```
