@@ -253,11 +253,10 @@ private:
 
     void internal_set(T&& value)
     {
+        std::unique_lock lock(m_mutex);
         clock::time_point call_time{ clock::now() };
         clock::time_point deadline{};
         bool ok{ false };
-
-        std::unique_lock lock(m_mutex);
         m_set_latest = std::max(m_set_latest, call_time);
 
         while (true) {
