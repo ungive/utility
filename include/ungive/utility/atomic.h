@@ -339,7 +339,7 @@ private:
                 // This set call has timed out and data cannot be set.
                 // Additionally, there is another set call that is more recent
                 // and whose data should be set instead, but since the deadline
-                // has not been update, the other set call will throw.
+                // has not been updated, the other set call will throw.
                 // In that case this set call should throw as well.
                 assert(!ok);
                 assert(deadline == m_set_deadline);
