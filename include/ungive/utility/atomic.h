@@ -36,7 +36,7 @@ namespace ungive::utility
  * @tparam T The value type.
  */
 template <typename T>
-class LiveValue
+class Atomic
 {
 private:
     // Represents a destructor for a value returned by get().
@@ -66,10 +66,10 @@ private:
         const T m_value;
     };
 
-    LiveValue(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
+    Atomic(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
     {
 #ifdef TRACK_LIFETIMES
-        m_lifetime_thread = std::thread(&LiveValue::track_lifetimes, this);
+        m_lifetime_thread = std::thread(&Atomic::track_lifetimes, this);
 #endif
     }
 
@@ -80,19 +80,19 @@ public:
     static constexpr auto default_get_lifetime =
         std::chrono::milliseconds{ 100 };
 
-    LiveValue() : LiveValue(std::make_shared<T>()) {}
+    Atomic() : Atomic(std::make_shared<T>()) {}
 
-    LiveValue(T&& value) : LiveValue(std::make_shared<T>(std::move(value))) {}
+    Atomic(T&& value) : Atomic(std::make_shared<T>(std::move(value))) {}
 
-    LiveValue(T const& value) : LiveValue(std::make_shared<T>(value)) {}
+    Atomic(T const& value) : Atomic(std::make_shared<T>(value)) {}
 
     template <typename... Args>
-    LiveValue(Args&&... args)
-        : LiveValue(std::make_shared<T>(std::forward<Args>(args)...))
+    Atomic(Args&&... args)
+        : Atomic(std::make_shared<T>(std::forward<Args>(args)...))
     {
     }
 
-    ~LiveValue()
+    ~Atomic()
     {
         // None of the destructors from references returned by get() should
         // be called anymore, since this class instance is now destroyed.
@@ -129,7 +129,7 @@ public:
      * @returns A reference-counted pointer to the internally stored value.
      */
     std::shared_ptr<const T> get(
-        std::chrono::milliseconds lifetime = LiveValue::default_get_lifetime)
+        std::chrono::milliseconds lifetime = Atomic::default_get_lifetime)
     {
         if (lifetime <= std::chrono::milliseconds::zero()) {
             throw std::invalid_argument(
@@ -143,7 +143,7 @@ public:
 
 #ifdef TRACK_LIFETIMES
         auto destructor =
-            std::bind(&LiveValue<T>::get_dtor_tracking, this, timepoint);
+            std::bind(&Atomic<T>::get_dtor_tracking, this, timepoint);
         {
             const std::lock_guard lock(m_lifetime_mutex);
             m_lifetime_expirations.insert(timepoint);
@@ -151,7 +151,7 @@ public:
             m_lifetime_cv.notify_all();
         }
 #else
-        auto destructor = std::bind(&LiveValue<T>::get_dtor, this);
+        auto destructor = std::bind(&Atomic<T>::get_dtor, this);
 #endif // TRACK_LIFETIMES
 
         // Store a reference to the internal shared pointer alongside
@@ -201,7 +201,7 @@ public:
     /**
      * @brief Atomically sets the internal value to the given value.
      *
-     * @see LiveValue::set
+     * @see Atomic::set
      *
      * @param value The value to set.
      */
@@ -281,7 +281,7 @@ private:
     // The value pointed to by the pointer may be be modified though.
     const std::shared_ptr<T> m_value{};
 
-    // Holds whether this live value instance is active and the destructor
+    // Holds whether this Atomic instance is active and the destructor
     // for references returned by get() is safe to be called.
     const std::shared_ptr<std::atomic<bool>> m_active{
         std::make_shared<std::atomic<bool>>(true)

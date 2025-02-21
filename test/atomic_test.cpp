@@ -6,7 +6,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "ungive/utility/live_value.h"
+#include "ungive/utility/atomic.h"
 
 using namespace ungive::utility;
 using namespace std::chrono_literals;
@@ -31,37 +31,37 @@ struct TestValueWithCtor
     int x{ TEST_VALUE_DEFAULT_X };
 };
 
-TEST(LiveValue, ConstructWithDefaultConstructor)
+TEST(Atomic, ConstructWithDefaultConstructor)
 {
-    LiveValue<TestValue> c;
+    Atomic<TestValue> c;
     EXPECT_EQ(TEST_VALUE_DEFAULT_X, c.get()->x);
 }
 
-TEST(LiveValue, ConstructWithMoveConstructor)
+TEST(Atomic, ConstructWithMoveConstructor)
 {
     int expected = 102;
     TestValue value{ expected };
-    LiveValue<TestValue> c(std::move(value));
+    Atomic<TestValue> c(std::move(value));
     EXPECT_EQ(expected, c.get()->x);
 }
 
-TEST(LiveValue, ConstructWithCopyConstructor)
+TEST(Atomic, ConstructWithCopyConstructor)
 {
     TestValue value{ 103 };
-    LiveValue<TestValue> c(value);
+    Atomic<TestValue> c(value);
     EXPECT_EQ(value.x, c.get()->x);
 }
 
-TEST(LiveValue, ConstructWithInitConstructor)
+TEST(Atomic, ConstructWithInitConstructor)
 {
     int expected = 104;
-    LiveValue<TestValue> c(104);
+    Atomic<TestValue> c(104);
     EXPECT_EQ(expected, c.get()->x);
 }
 
-TEST(LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
+TEST(Atomic, SetBlocksUntilGetReturnValueIsDestructed)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(125ms);
         // Pretend it takes this long to use the value.
@@ -82,9 +82,9 @@ TEST(LiveValue, SetBlocksUntilGetReturnValueIsDestructed)
     EXPECT_EQ(3, c.get()->x);
 }
 
-TEST(LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
+TEST(Atomic, CopyOfGetReturnValueMakesSetBlockAsWell)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     std::thread t1([&] {
         std::shared_ptr<const TestValue> copied_ref{ nullptr };
         {
@@ -106,13 +106,13 @@ TEST(LiveValue, CopyOfGetReturnValueMakesSetBlockAsWell)
     EXPECT_EQ(4, c.get()->x);
 }
 
-TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
+TEST(Atomic, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
 {
     std::shared_ptr<TestValue> value_ref{ nullptr };
     {
         std::shared_ptr<const TestValue> get_ref{ nullptr };
         {
-            LiveValue<TestValue> c(1);
+            Atomic<TestValue> c(1);
             value_ref = c._value();
             // There are two reference to the value reference:
             // One in c and one in this local variable.
@@ -131,16 +131,16 @@ TEST(LiveValue, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
             EXPECT_EQ(3, value_ref.use_count());
         }
         EXPECT_EQ(1, get_ref.use_count());
-        // The LiveValue instance has been destructed,
+        // The Atomic instance has been destructed,
         // so there's only a reference left in value_ref and get_ref.
         EXPECT_EQ(2, value_ref.use_count());
     }
     EXPECT_EQ(1, value_ref.use_count());
 }
 
-TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
+TEST(Atomic, GetReturnsChangedValueAfterUpdatingValueWithSet)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     c.set({ 2 }); // move
     EXPECT_EQ(2, c.get()->x);
     TestValue other{ 3 };
@@ -150,25 +150,25 @@ TEST(LiveValue, GetReturnsChangedValueAfterUpdatingValueWithSet)
     EXPECT_EQ(4, c.get()->x);
 }
 
-TEST(LiveValue, GetValueCannotBeModified)
+TEST(Atomic, GetValueCannotBeModified)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     auto ref = c.get();
     static_assert(std::is_const_v<decltype(ref)::element_type>);
 }
 
-TEST(LiveValue, SetDoesNotBlockWhenGetWasNeverCalled)
+TEST(Atomic, SetDoesNotBlockWhenGetWasNeverCalled)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     auto start = std::chrono::steady_clock::now();
     c.set({ 2 });
     auto delta = std::chrono::steady_clock::now() - start;
     EXPECT_LT(delta, 1ms);
 }
 
-TEST(LiveValue, GetDoesNotBlockWhileSetIsWaiting)
+TEST(Atomic, GetDoesNotBlockWhileSetIsWaiting)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(125ms);
         std::this_thread::sleep_for(100ms);
@@ -186,9 +186,9 @@ TEST(LiveValue, GetDoesNotBlockWhileSetIsWaiting)
     t2.join();
 }
 
-TEST(LiveValue, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
+TEST(Atomic, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     std::thread t1([&] {
         auto ref = c.get(75ms);
         std::this_thread::sleep_for(50ms);
@@ -228,9 +228,9 @@ void log_timestamps(U u, V v)
 }
 
 #ifdef TRACK_LIFETIMES
-TEST(LiveValue, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
+TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     auto expected_lifetime = 156ms;
     auto start = std::chrono::steady_clock::now();
     EXPECT_DEATH(
@@ -246,9 +246,9 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 }
 
 #ifdef LIFETIME_RECORDING
-TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
+TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     c._stop_lifetime_tracking();
     auto ref = c.get(100ms);
     auto start = std::chrono::steady_clock::now();
@@ -257,12 +257,12 @@ TEST(LiveValue, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
     EXPECT_GT(delta, 75ms);
 }
 
-TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
+TEST(Atomic, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 {
     using namespace std::chrono;
 
     std::vector<std::thread> threads;
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     c._record_lifetime_history();
 
     auto call_get = [&](milliseconds lifetime, bool exceed_lifetime = false) {
@@ -324,9 +324,9 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 #endif // LIFETIME_RECORDING
 #endif // TRACK_LIFETIMES
 
-TEST(LiveValue, SetCallsWatchCallback)
+TEST(Atomic, SetCallsWatchCallback)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     TestValue watch_result{};
     c.watch([&](TestValue const& value) {
         watch_result = value;
@@ -335,9 +335,9 @@ TEST(LiveValue, SetCallsWatchCallback)
     EXPECT_EQ(2, watch_result.x);
 }
 
-TEST(LiveValue, WatchCallbackCannotCallInstanceMethods)
+TEST(Atomic, WatchCallbackCannotCallInstanceMethods)
 {
-    LiveValue<TestValue> c(1);
+    Atomic<TestValue> c(1);
     c.watch([&](TestValue const& value) {
         EXPECT_ANY_THROW(c.get());
         EXPECT_ANY_THROW(c.set({ 3 }));
