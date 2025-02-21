@@ -25,20 +25,24 @@
 namespace ungive::utility
 {
 
-// FIXME increase default get lifetime
-
 /**
  * @brief Wraps a value that can be updated atomically from multiple threads.
  *
  * Values can be retrieved by pointer (without copying) and
  * can be updated whenever there is no pointer to it in active use.
- * Whenever a pointer to the value is retrieved via Atomic::get()
- * any calls to Atomic::set() block until all returned pointers
- * from Atomic::get() have been destructed.
+ * Whenever a pointer to the value is retrieved via Atomic::get
+ * any calls to Atomic::set block until all returned pointers
+ * from Atomic::get have been destructed.
+ *
+ * The default get lifetime is sufficiently high to loosely guarantee that
+ * Atomic::set will never throw an exception when pointers returned by
+ * Atomic::get are used in the way that is required in its documentation.
  *
  * @tparam T The value type.
+ * @tparam DefaultGetLifetimeMillis The default lifetime
+ * for pointers returned by Atomic::get.
  */
-template <typename T, size_t DefaultGetLifetimeMillis = 100>
+template <typename T, size_t DefaultGetLifetimeMillis = 10000>
 class Atomic
 {
 private:
@@ -53,7 +57,7 @@ private:
     static_assert(Atomic::valid_lifetime(
         std::chrono::milliseconds{ DefaultGetLifetimeMillis }));
 
-    // Represents a destructor for a value returned by Atomic::get().
+    // Represents a destructor for a value returned by Atomic::get.
     // The destructor is a callable that is only called when enabled by a flag
     // and is accompanied by a shared pointer to the atomically wrapped value.
     struct GetDestructor
@@ -130,15 +134,15 @@ public:
      * It is recommended to not store the returned shared pointer
      * for a long time and instead only treat it as a temporary rvalue.
      * Storing it for a longer than needed is considered bad pratice
-     * and may cause substantial delays when calling Atomic::set().
+     * and may cause substantial delays when calling Atomic::set.
      *
      * The returned pointer is expected to be destructed after
      * the amount of time in Atomic::default_get_lifetime has elapsed.
-     * If it is used for longer, calls to Atomic::set() may throw an exception.
+     * If it is used for longer, calls to Atomic::set may throw an exception.
      * Never store a reference to the value that is pointed to by the
      * returned pointer, as that eliminates any thread-safety guarantees.
      * The value that is pointed to by the returned value must not be modified.
-     * To modify the stored value use the Atomic::set() method instead.
+     * To modify the stored value use the Atomic::set method instead.
      *
      * @returns A reference-counted pointer to the internally stored value.
      */
@@ -172,13 +176,13 @@ public:
     /**
      * @brief Atomically sets the internal value to the given value.
      *
-     * Blocks until all references returned from Atomic::get() are destroyed
+     * Blocks until all references returned from Atomic::get are destroyed
      * or the operation times out after the given timeout duration.
      *
      * @param value The value to set.
      *
      * @throws std::runtime_error when a reference returned
-     * by Atomic::get() is used beyond it's promised lifetime.
+     * by Atomic::get is used beyond it's promised lifetime.
      */
     inline void set(T&& value) { internal_set(std::move(value)); }
 
@@ -196,7 +200,7 @@ public:
     }
 
     /**
-     * @brief Sets a callback for when the value is changed with Atomic::set().
+     * @brief Sets a callback for when the value is changed with Atomic::set.
      *
      * The callback must not call any instance methods of this class.
      *
@@ -265,9 +269,9 @@ private:
     }
 
     /**
-     * @brief Handler for the destruction of values returned by Atomic::get().
+     * @brief Handler for the destruction of values returned by Atomic::get.
      *
-     * Decrements the reference count and notifies any Atomic::set() calls.
+     * Decrements the reference count and notifies any Atomic::set calls.
      */
     void get_dtor()
     {
@@ -319,7 +323,7 @@ private:
     const std::shared_ptr<T> m_value{};
 
     // Holds whether this Atomic instance is active and the destructor
-    // for references returned by Atomic::get() is safe to be called.
+    // for references returned by Atomic::get is safe to be called.
     const std::shared_ptr<std::atomic<bool>> m_active{
         std::make_shared<std::atomic<bool>>(true)
     };
