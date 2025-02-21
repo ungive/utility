@@ -108,7 +108,7 @@ TEST(Atomic, CopyOfGetReturnValueMakesSetBlockAsWell)
 
 TEST(Atomic, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
 {
-    std::shared_ptr<TestValue> value_ref{ nullptr };
+    std::shared_ptr<const TestValue> value_ref{ nullptr };
     {
         std::shared_ptr<const TestValue> get_ref{ nullptr };
         {

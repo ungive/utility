@@ -26,7 +26,7 @@ namespace ungive::utility
 {
 
 /**
- * @brief Wraps a value that can be updated safely from other threads.
+ * @brief Wraps a value that can be updated atomically from multiple threads.
  *
  * Values can be retrieved by reference (without copying)
  * and can be updated whenever there is no reference to it in active use.
@@ -41,13 +41,13 @@ class Atomic
 private:
     // Represents a destructor for a value returned by get().
     // The destructor is a callable that is only called when enabled by a flag
-    // and is accompanied by a value that is stored alognside the destructor.
-    template <typename T>
+    // and is accompanied by a shared pointer to the atomically wrapped value.
     struct GetDestructor
     {
         GetDestructor(std::function<void()> callable,
-            std::shared_ptr<std::atomic<bool>> flag, T value)
-            : m_callable{ callable }, m_flag{ flag }, m_value{ value }
+            std::shared_ptr<std::atomic<bool>> flag,
+            std::shared_ptr<const T> value)
+            : m_callable{ callable }, m_flag{ flag }, m_value_ref{ value }
         {
             assert(m_callable != nullptr);
             assert(m_flag != nullptr);
@@ -63,7 +63,7 @@ private:
     private:
         const std::shared_ptr<std::atomic<bool>> m_flag{ nullptr };
         const std::function<void()> m_callable{ nullptr };
-        const T m_value;
+        const std::shared_ptr<const T> m_value_ref{ nullptr };
     };
 
     Atomic(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
@@ -100,6 +100,7 @@ public:
 
 #ifdef TRACK_LIFETIMES
         stop_lifetime_thread();
+
 #ifdef LIFETIME_RECORDING
         // There should be no errors left in the history.
         assert(m_lifetime_history.empty());
@@ -203,7 +204,7 @@ public:
      *
      * @see Atomic::set
      *
-     * @param value The value to set.
+     * @param args Constructor arguments for the value.
      */
     template <typename... Args>
     inline void set(Args&&... args)
@@ -214,8 +215,7 @@ public:
     /**
      * @brief Sets a callback for when the value is changed with set().
      *
-     * The callback must not call any instance methods of this class
-     * as that would cause a deadlock.
+     * The callback must not call any instance methods of this class.
      *
      * @param callback Function that should be called on value changes.
      */
@@ -224,9 +224,6 @@ public:
         const std::lock_guard lock(m_mutex);
         m_callback = callback;
     }
-
-    // TODO add async set(): sets value on a separate thread
-    // so that the current thread is not blocking
 
 private:
     /**
@@ -290,7 +287,7 @@ private:
 #ifdef UNGIVE_UTILITY_TEST
 public:
     // Returns a copy of the internally stored value.
-    inline decltype(m_value) _value() const { return m_value; }
+    inline std::shared_ptr<const T> _value() const { return m_value; }
 #endif // UNGIVE_UTILITY_TEST
 
 #ifdef TRACK_LIFETIMES
