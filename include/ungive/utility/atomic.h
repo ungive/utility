@@ -109,20 +109,21 @@ public:
     }
 
     /**
-     * @brief Returns a const reference and increments the reference count.
+     * @brief Returns a const value pointer and increments the reference count.
      *
-     * The reference count is decremented when the returned value is destructed.
-     * It is recommended to not store the return value for a long time
-     * and instead only treat it as a temporary r-value.
-     * Storing it for a long time is considered bad pratice
+     * The reference count is decremented when the value pointer is destructed.
+     * It is recommended to not store the returned shared pointer
+     * for a long time and instead only treat it as a temporary rvalue.
+     * Storing it for a longer than needed is considered bad pratice
      * and may cause substantial delays when calling set().
      *
-     * The returned reference is expected to be destructed after
+     * The returned pointer is expected to be destructed after
      * the amount of time in the passed lifetime has elapsed.
-     * If it is used for longer, calls to set() may throw.
+     * If it is used for longer, calls to set() may throw an exception.
      * The passed lifetime must be greater than zero.
-     *
-     * The value that is reference by the returned value may not be modified.
+     * Never store a reference to the value that is pointed to by the
+     * returned pointer, as that elimiantes any thread-safety guarantees.
+     * The value that is pointed to by the returned value must not be modified.
      * To modify the stored value use the set() method instead.
      *
      * @param lifetime How long the returned value will be used at most.
