@@ -179,6 +179,10 @@ public:
      * Blocks until all references returned from Atomic::get are destroyed
      * or the operation times out after the given timeout duration.
      *
+     * This operation is guaranteed to set the value to the one that has
+     * been passed to the most recent set call. When multiple set calls
+     * are blocking at the same time, the most recent call succeeds.
+     *
      * @param value The value to set.
      *
      * @throws std::runtime_error when a reference returned
@@ -213,14 +217,16 @@ public:
     }
 
 private:
+    using clock = std::chrono::steady_clock;
+
     std::shared_ptr<const T> internal_get(std::chrono::milliseconds lifetime)
     {
         assert(valid_lifetime(lifetime));
 
         const std::lock_guard lock(m_mutex);
         m_refs += 1;
-        auto timepoint = std::chrono::steady_clock::now() + lifetime;
-        m_set_wait = std::max(m_set_wait, timepoint);
+        auto timepoint = clock::now() + lifetime;
+        m_set_deadline = std::max(m_set_deadline, timepoint);
 
 #ifdef TRACK_LIFETIMES
         auto destructor =
@@ -247,17 +253,89 @@ private:
 
     void internal_set(T&& value)
     {
-        std::unique_lock lock(m_mutex);
-        decltype(m_set_wait) timepoint{};
+        clock::time_point call_time{ clock::now() };
+        clock::time_point deadline{};
         bool ok{ false };
 
-        // Loop in case the timepoint has been updated by another get() call.
-        do {
-            timepoint = m_set_wait;
-            ok = m_cv.wait_until(lock, timepoint, [this] {
-                return m_refs == 0;
+        std::unique_lock lock(m_mutex);
+        m_set_latest = std::max(m_set_latest, call_time);
+
+        while (true) {
+            deadline = m_set_deadline;
+            ok = m_set_cv.wait_until(lock, deadline, [this, call_time] {
+                return m_refs == 0 && call_time == m_set_latest ||
+                    m_set_latest == clock::time_point::min();
             });
-        } while (!ok && timepoint < m_set_wait);
+            if (!ok && deadline < m_set_deadline) {
+                // The condition is not satisfied and the deadline was updated.
+                // Since there is more time, simply iterate and wait longer.
+                continue;
+            }
+
+            // Handle all possible cases in which wait_until() could return.
+            // In all these cases the deadline was exceeded and has no updates.
+            // All cases are ordered by their likelihood.
+
+            auto a = m_refs == 0;
+            auto b = call_time == m_set_latest;
+            auto c = m_set_latest == clock::time_point::min();
+
+            if (a && b && !c) { // 110: ok
+                // Data can be set and this set call contains the latest data.
+                assert(ok);
+                break;
+
+            } else if (!b && c) { // 001 / 101: ok
+                // Another more recent set call has made its changes,
+                // therefore we can return immediately.
+                assert(ok);
+                return;
+
+            } else if (!a && b && !c) { // 010: timeout
+                // Data cannot be set, but this is the latest set call.
+                // It has timed out and an exception needs to be thrown.
+                assert(!ok);
+                break;
+
+            } else if (!a && !b && !c) { // 000: timeout
+                // This set call has timed out and data cannot be set.
+                // Additionally, there is another set call that is more recent
+                // and whose data should be set instead, but since the deadline
+                // has not been update, the other set call will throw.
+                // In that case this set call should throw as well.
+                assert(!ok);
+                assert(deadline == m_set_deadline);
+                break;
+
+            } else if (a && !b && !c) { // 100: timeout
+                // Data can be set, but there is another set call that
+                // is more recent and whose data should be set instead.
+                // Additionally this set call has timed out
+                // and there is no update to the deadline.
+                assert(!ok);
+                assert(m_set_latest > call_time);
+                assert(deadline == m_set_deadline);
+
+                // This case is extremely unlikely to happen in practice,
+                // since both the reference count has reached zero and the
+                // deadline has been reached at exactly the same time, yet
+                // the latest set call has not modified the value yet.
+                // Simply sleep for a small duration to give the latest set
+                // call time to make its changes, then continue the loop so
+                // that this set call can return after the new value has
+                // been set. We cannot return now, as set must only return
+                // after a value update.
+                std::this_thread::sleep_for(100ns);
+                continue;
+
+            } else if (!a && b && c) { // 011 / 111
+                // This cannot happen: b and c are mutually exclusive.
+                assert(call_time != clock::time_point::min());
+            }
+
+            assert(false);
+            throw std::runtime_error("impossible state");
+        }
 
         if (!ok) {
             throw std::runtime_error("a reference is used beyond its lifetime");
@@ -266,6 +344,9 @@ private:
         if (m_callback) {
             m_callback(*m_value);
         }
+
+        m_set_latest = clock::time_point::min();
+        m_set_cv.notify_all();
     }
 
     /**
@@ -283,7 +364,7 @@ private:
         auto old_refs = decr_refs();
         if (old_refs <= 1) {
             assert(old_refs != 0);
-            m_cv.notify_all();
+            m_set_cv.notify_all();
         }
     }
 
@@ -311,11 +392,10 @@ private:
     }
 
     std::mutex m_mutex{};
-    std::condition_variable m_cv{};
+    std::condition_variable m_set_cv{};
     std::atomic<size_t> m_refs{ 0 };
-    std::chrono::steady_clock::time_point m_set_wait{
-        std::chrono::steady_clock::time_point::min()
-    };
+    clock::time_point m_set_deadline{ clock::time_point::min() };
+    clock::time_point m_set_latest{ clock::time_point::min() };
     std::function<void(T const&)> m_callback{ nullptr };
 
     // A pointer to the stored value. The pointer is never modified or replaced.
@@ -371,8 +451,7 @@ private:
     std::thread m_lifetime_thread{};
     std::mutex m_lifetime_mutex{};
     std::condition_variable m_lifetime_cv{};
-    std::multiset<std::chrono::steady_clock::time_point>
-        m_lifetime_expirations{};
+    std::multiset<clock::time_point> m_lifetime_expirations{};
     bool m_lifetime_update{ false };
     bool m_lifetime_stop{ false };
 
@@ -380,13 +459,13 @@ private:
     {
         std::unique_lock lock(m_lifetime_mutex);
         while (!m_lifetime_stop) {
-            auto timepoint = std::chrono::steady_clock::time_point::max();
+            auto timepoint = clock::time_point::max();
             if (!m_lifetime_expirations.empty()) {
                 timepoint = *m_lifetime_expirations.begin();
             }
 
 #ifdef LIFETIME_RECORDING
-            auto start = std::chrono::steady_clock::now();
+            auto start = clock::now();
 #endif // LIFETIME_RECORDING
 
             m_lifetime_cv.wait_until(lock, timepoint, [this] {
@@ -401,7 +480,7 @@ private:
                 if (m_lifetime_record_history) {
                     m_lifetime_history.push_back(std::make_pair(
                         std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now() - start),
+                            clock::now() - start),
                         false));
                     m_lifetime_history_cv.notify_all();
                 }
@@ -411,7 +490,7 @@ private:
 
             assert(!m_lifetime_expirations.empty());
             assert(timepoint == *m_lifetime_expirations.begin());
-            assert(std::chrono::steady_clock::now() >= timepoint);
+            assert(clock::now() >= timepoint);
 
             m_lifetime_expirations.erase(m_lifetime_expirations.begin());
 
@@ -420,7 +499,7 @@ private:
             if (m_lifetime_record_history) {
                 m_lifetime_history.push_back(std::make_pair(
                     std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - start),
+                        clock::now() - start),
                     true));
                 m_lifetime_history_cv.notify_all();
                 assertion_error = false;
@@ -434,7 +513,7 @@ private:
         }
     }
 
-    void get_dtor_tracking(std::chrono::steady_clock::time_point timepoint)
+    void get_dtor_tracking(clock::time_point timepoint)
     {
         {
             const std::lock_guard lock(m_lifetime_mutex);
