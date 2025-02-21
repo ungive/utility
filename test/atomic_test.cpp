@@ -393,6 +393,31 @@ TEST(Atomic, WatchCallbackCannotCallInstanceMethods)
     c.set(2);
 }
 
+TEST(Atomic, WatchIsOnlyCalledWithSuccessfulSetCalls)
+{
+    Atomic<TestValue> c(1);
+    std::vector<int> callback_values{};
+    c.watch([&](decltype(c)::value_type const& value) {
+        callback_values.push_back(value.x);
+    });
+    std::thread t1([&] {
+        auto ref = c.get(100ms);
+        std::this_thread::sleep_for(75ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(25ms);
+        EXPECT_FALSE(c.set({ 2 }));
+    });
+    std::thread t3([&] {
+        std::this_thread::sleep_for(50ms);
+        EXPECT_TRUE(c.set({ 3 }));
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    EXPECT_THAT(callback_values, ElementsAre(3));
+}
+
 TEST(Atomic, ValueTypeIsTheTypeOfTheValue)
 {
     Atomic<TestValue> c(1);
