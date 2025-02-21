@@ -6,6 +6,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+// #define NO_TRACK_LIFETIMES
 #include "ungive/utility/atomic.h"
 
 using namespace ungive::utility;
@@ -250,6 +251,20 @@ void log_timestamps(U u, V v)
         << "ms" << std::endl;
 }
 
+TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
+{
+    // FIXME this test should run even without lifetime tracking/recording!
+    Atomic<TestValue> c(1);
+#ifdef TRACK_LIFETIMES
+    c._stop_lifetime_tracking();
+#endif
+    auto ref = c.get(100ms);
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_ANY_THROW(c.set({ 2 }));
+    auto delta = std::chrono::steady_clock::now() - start;
+    EXPECT_GT(delta, 75ms);
+}
+
 #ifdef TRACK_LIFETIMES
 TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 {
@@ -269,18 +284,6 @@ TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 }
 
 #ifdef LIFETIME_RECORDING
-TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
-{
-    // FIXME this test should run even without lifetime tracking/recording!
-    Atomic<TestValue> c(1);
-    c._stop_lifetime_tracking();
-    auto ref = c.get(100ms);
-    auto start = std::chrono::steady_clock::now();
-    EXPECT_ANY_THROW(c.set({ 2 }));
-    auto delta = std::chrono::steady_clock::now() - start;
-    EXPECT_GT(delta, 75ms);
-}
-
 TEST(Atomic, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 {
     using namespace std::chrono;
@@ -385,7 +388,9 @@ TEST(Atomic, DefaultGetLifetimeIsValuePassedAsTemplateArgument)
 TEST(Atomic, PassedDefaultGetLifeTimeIsUsedAsLifetimeForGetWithoutArguments)
 {
     Atomic<TestValue, 163> c(1);
+#ifdef TRACK_LIFETIMES
     c._stop_lifetime_tracking();
+#endif
     auto ref = c.get();
     auto start = std::chrono::steady_clock::now();
     EXPECT_ANY_THROW(c.set({ 2 }));
