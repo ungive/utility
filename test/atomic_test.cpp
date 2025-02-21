@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 // #define NO_TRACK_LIFETIMES
-#include "ungive/utility/atomic.h"
+#include "ungive/utility/atomic.hpp"
 
 using namespace testing;
 using namespace ungive::utility;
