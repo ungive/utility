@@ -323,3 +323,24 @@ TEST(LiveValue, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 }
 #endif // LIFETIME_RECORDING
 #endif // TRACK_LIFETIMES
+
+TEST(LiveValue, SetCallsWatchCallback)
+{
+    LiveValue<TestValue> c(1);
+    TestValue watch_result{};
+    c.watch([&](TestValue const& value) {
+        watch_result = value;
+    });
+    c.set(2);
+    EXPECT_EQ(2, watch_result.x);
+}
+
+TEST(LiveValue, WatchCallbackCannotCallInstanceMethods)
+{
+    LiveValue<TestValue> c(1);
+    c.watch([&](TestValue const& value) {
+        EXPECT_ANY_THROW(c.get());
+        EXPECT_ANY_THROW(c.set({ 3 }));
+    });
+    c.set(2);
+}

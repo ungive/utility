@@ -193,6 +193,9 @@ public:
             throw std::runtime_error("a reference is used beyond its lifetime");
         }
         *m_value = std::move(value);
+        if (m_callback) {
+            m_callback(*m_value);
+        }
     }
 
     /**
@@ -207,6 +210,23 @@ public:
     {
         set(T(std::forward<Args>(args)...));
     }
+
+    /**
+     * @brief Sets a callback for when the value is changed with set().
+     *
+     * The callback must not call any instance methods of this class
+     * as that would cause a deadlock.
+     *
+     * @param callback Function that should be called on value changes.
+     */
+    void watch(std::function<void(T const&)> callback)
+    {
+        const std::lock_guard lock(m_mutex);
+        m_callback = callback;
+    }
+
+    // TODO add async set(): sets value on a separate thread
+    // so that the current thread is not blocking
 
 private:
     /**
@@ -255,6 +275,7 @@ private:
     std::chrono::steady_clock::time_point m_set_wait{
         std::chrono::steady_clock::time_point::min()
     };
+    std::function<void(T const&)> m_callback{ nullptr };
 
     // A pointer to the stored value. The pointer is never modified or replaced.
     // The value pointed to by the pointer may be be modified though.
