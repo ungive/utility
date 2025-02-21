@@ -435,7 +435,9 @@ private:
                 // that this set call can return after the new value has
                 // been set. We cannot return now, as set must only return
                 // after a value update.
+                lock.unlock();
                 std::this_thread::sleep_for(100ns);
+                lock.lock();
                 continue;
 
             } else if (!a && b && c) { // 011 / 111
