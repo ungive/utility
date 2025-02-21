@@ -212,7 +212,7 @@ public:
      */
     void watch(std::function<void(T const&)> callback)
     {
-        const std::lock_guard lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_callback = callback;
     }
 
@@ -223,7 +223,7 @@ private:
     {
         assert(valid_lifetime(lifetime));
 
-        const std::lock_guard lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_refs += 1;
         auto timepoint = clock::now() + lifetime;
         m_set_deadline = std::max(m_set_deadline, timepoint);
@@ -232,7 +232,7 @@ private:
         auto destructor =
             std::bind(&self_type::get_dtor_tracking, this, timepoint);
         {
-            const std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard lock(m_lifetime_mutex);
             m_lifetime_expirations.insert(timepoint);
             m_lifetime_update = true;
             m_lifetime_cv.notify_all();
@@ -428,7 +428,7 @@ public:
     // Records lifetime errors instead of causing assertion errors.
     void _record_lifetime_history()
     {
-        const std::lock_guard lock(m_lifetime_mutex);
+        std::lock_guard lock(m_lifetime_mutex);
         m_lifetime_record_history = true;
     }
 
@@ -516,7 +516,7 @@ private:
     void get_dtor_tracking(clock::time_point timepoint)
     {
         {
-            const std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard lock(m_lifetime_mutex);
             auto it = m_lifetime_expirations.find(timepoint);
             if (it != m_lifetime_expirations.end()) {
                 // Only erase one item with this value, not all.
@@ -530,7 +530,7 @@ private:
     void stop_lifetime_thread()
     {
         {
-            const std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard lock(m_lifetime_mutex);
             if (m_lifetime_stop) {
                 return;
             }
