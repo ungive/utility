@@ -28,6 +28,8 @@
 #include <unordered_set>
 #endif
 
+#include "detail/unlock_guard.h"
+
 namespace ungive
 {
 namespace utility
@@ -307,9 +309,8 @@ private:
 
 #ifdef UNGIVE_UTILITY_TEST
         if (m_sleep_before_set > milliseconds::zero()) {
-            lock.unlock();
+            detail::unlock_guard<decltype(lock)> unlock(lock);
             std::this_thread::sleep_for(m_sleep_before_set);
-            lock.lock();
         }
 #endif // UNGIVE_UTILITY_TEST
 
@@ -435,9 +436,10 @@ private:
                 // that this set call can return after the new value has
                 // been set. We cannot return now, as set must only return
                 // after a value update.
-                lock.unlock();
-                std::this_thread::sleep_for(100ns);
-                lock.lock();
+                {
+                    detail::unlock_guard<decltype(lock)> unlock(lock);
+                    std::this_thread::sleep_for(100ns);
+                }
                 continue;
 
             } else if (!a && b && c) { // 011 / 111
