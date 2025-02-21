@@ -16,12 +16,13 @@
 #include <set>
 #endif
 
-// Enable lifetime recording during unit tests.
+// Enable lifetime recording with unit tests.
 #if defined(TRACK_LIFETIMES) && defined(UNGIVE_UTILITY_TEST)
 #define LIFETIME_RECORDING
 #include <deque>
 #endif
 
+// Track wait codepaths with unit tests.
 #if defined(UNGIVE_UTILITY_TEST)
 #define WAIT_CODEPATHS
 #include <unordered_set>
@@ -491,6 +492,8 @@ public:
 #endif // UNGIVE_UTILITY_TEST
 
 #ifdef TRACK_LIFETIMES
+public:
+    inline void _stop_lifetime_tracking() { stop_lifetime_thread(); }
 
 #ifdef LIFETIME_RECORDING
 private:
@@ -499,8 +502,6 @@ private:
     std::deque<std::pair<std::chrono::milliseconds, bool>> m_lifetime_history;
 
 public:
-    inline void _stop_lifetime_tracking() { stop_lifetime_thread(); }
-
     // Records lifetime errors instead of causing assertion errors.
     void _record_lifetime_history()
     {

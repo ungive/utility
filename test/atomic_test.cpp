@@ -46,6 +46,14 @@ inline void expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
 #endif
 }
 
+template <typename T, size_t D>
+inline void stop_lifetime_tracking(Atomic<T, D>& c)
+{
+#ifdef TRACK_LIFETIMES
+    c._stop_lifetime_tracking();
+#endif
+}
+
 TEST(Atomic, Example)
 {
     struct Data
@@ -270,9 +278,7 @@ TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 {
     // FIXME this test should run even without lifetime tracking/recording!
     Atomic<TestValue> c(1);
-#ifdef TRACK_LIFETIMES
-    c._stop_lifetime_tracking();
-#endif
+    stop_lifetime_tracking(c);
     auto ref = c.get(100ms);
     auto start = std::chrono::steady_clock::now();
     EXPECT_ANY_THROW(c.set({ 2 }));
@@ -403,9 +409,7 @@ TEST(Atomic, DefaultGetLifetimeIsValuePassedAsTemplateArgument)
 TEST(Atomic, PassedDefaultGetLifeTimeIsUsedAsLifetimeForGetWithoutArguments)
 {
     Atomic<TestValue, 163> c(1);
-#ifdef TRACK_LIFETIMES
-    c._stop_lifetime_tracking();
-#endif
+    stop_lifetime_tracking(c);
     auto ref = c.get();
     auto start = std::chrono::steady_clock::now();
     EXPECT_ANY_THROW(c.set({ 2 }));
@@ -526,9 +530,7 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
 TEST(Atomic, OutdatedAndLatestSetCallsTimeOutAndThrowWhenGetLivesTooLong)
 {
     Atomic<TestValue> c(1);
-#ifdef TRACK_LIFETIMES
-    c._stop_lifetime_tracking();
-#endif
+    stop_lifetime_tracking(c);
     std::thread t1([&] {
         auto ref = c.get(125ms);
         std::this_thread::sleep_for(150ms);
