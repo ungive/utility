@@ -410,15 +410,15 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCall)
     });
     std::thread t2([&] {
         std::this_thread::sleep_for(25ms);
-        c.set({ 2 });
+        EXPECT_FALSE(c.set({ 2 }));
     });
     std::thread t3([&] {
         std::this_thread::sleep_for(50ms);
-        c.set({ 3 });
+        EXPECT_FALSE(c.set({ 3 }));
     });
     std::thread t4([&] {
         std::this_thread::sleep_for(75ms);
-        c.set({ expected });
+        EXPECT_TRUE(c.set({ expected }));
     });
     t1.join();
     t2.join();
@@ -437,17 +437,17 @@ TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
     });
     std::thread t2([&] {
         std::this_thread::sleep_for(25ms);
-        c.set({ 2 });
+        EXPECT_FALSE(c.set({ 2 }));
         EXPECT_EQ(expected, c.get()->x);
     });
     std::thread t3([&] {
         std::this_thread::sleep_for(50ms);
-        c.set({ 3 });
+        EXPECT_FALSE(c.set({ 3 }));
         EXPECT_EQ(expected, c.get()->x);
     });
     std::thread t4([&] {
         std::this_thread::sleep_for(75ms);
-        c.set({ expected });
+        EXPECT_TRUE(c.set({ expected }));
         EXPECT_EQ(expected, c.get()->x);
     });
     t1.join();
@@ -483,7 +483,7 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
                 n_ready += 1;
                 cv.notify_one();
             }
-            c.set({ int(2) + i }); // start with 2
+            EXPECT_FALSE(c.set({ int(2) + i })); // start with 2
             EXPECT_EQ(expected, c.get()->x);
         }));
     }
@@ -495,7 +495,7 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
         ASSERT_TRUE(ok);
     }
     std::this_thread::sleep_for(1ms);
-    c.set({ expected });
+    EXPECT_TRUE(c.set({ expected }));
     EXPECT_EQ(expected, c.get()->x);
     for (auto& thread : threads) {
         assert(thread.joinable());
@@ -503,6 +503,4 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
     }
 }
 
-// TODO refactor internal_set which got pretty large
 // TODO assert which code paths have been executed in set?
-// TODO return boolean whether set was successful?
