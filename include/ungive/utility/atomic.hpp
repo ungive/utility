@@ -369,7 +369,7 @@ public:
         return m_wait_codepaths;
     }
 
-#define wait_codepath(path) m_wait_codepaths.insert(path)
+#define wait_codepath(path) m_wait_codepaths.insert(WaitCodepath::path)
 #else
 #define wait_codepath(path)
 #endif // WAIT_CODEPATHS
@@ -392,7 +392,7 @@ private:
             if (!ok && deadline < m_set_deadline) {
                 // The condition is not satisfied and the deadline was updated.
                 // Since there is more time, simply iterate and wait longer.
-                wait_codepath(WaitCodepath::UpdatedDeadline);
+                wait_codepath(UpdatedDeadline);
                 continue;
             }
 
@@ -405,27 +405,27 @@ private:
             auto c = m_set_latest == clock::time_point::min();
 
             if (a && b && !c) { // 110: ok
-                wait_codepath(WaitCodepath::SetWithLatestData);
+                wait_codepath(SetWithLatestData);
                 // Data can be set and this set call contains the latest data.
                 assert(ok);
                 break;
 
             } else if (!b && c) { // 001 / 101: ok
-                wait_codepath(WaitCodepath::NoSetWithOutdatedData);
+                wait_codepath(NoSetWithOutdatedData);
                 // Another more recent set call has made its changes,
                 // therefore we can return immediately.
                 assert(ok);
                 return WaitResult::Outdated;
 
             } else if (!a && b && !c) { // 010: timeout
-                wait_codepath(WaitCodepath::NoSetTimeoutLatest);
+                wait_codepath(NoSetTimeoutLatest);
                 // Data cannot be set, but this is the latest set call.
                 // It has timed out and an exception needs to be thrown.
                 assert(!ok);
                 break;
 
             } else if (!a && !b && !c) { // 000: timeout
-                wait_codepath(WaitCodepath::NoSetTimeoutOtherLatest);
+                wait_codepath(NoSetTimeoutOtherLatest);
                 // This set call has timed out and data cannot be set.
                 // Additionally, there is another set call that is more recent
                 // and whose data should be set instead, but since the deadline
@@ -436,7 +436,7 @@ private:
                 break;
 
             } else if (a && !b && !c) { // 100: timeout
-                wait_codepath(WaitCodepath::NoSetDelayOtherLatest);
+                wait_codepath(NoSetDelayOtherLatest);
                 // Data can be set, but there is another set call that
                 // is more recent and whose data should be set instead.
                 // Additionally this set call has timed out
