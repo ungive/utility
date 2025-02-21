@@ -183,12 +183,18 @@ public:
      * been passed to the most recent set call. When multiple set calls
      * are blocking at the same time, the most recent call succeeds.
      *
+     * Returns whether the value has been set or another more recent
+     * Action::set call has set a different value from another thread.
+     * When false is returned, the value may be different from the passed on.
+     *
      * @param value The value to set.
+     *
+     * @returns A boolean indicating whether the given value was set.
      *
      * @throws std::runtime_error when a reference returned
      * by Atomic::get is used beyond it's promised lifetime.
      */
-    inline void set(T&& value) { internal_set(std::move(value)); }
+    inline bool set(T&& value) { return internal_set(std::move(value)); }
 
     /**
      * @brief Atomically sets the internal value to the given value.
@@ -196,11 +202,13 @@ public:
      * @see Atomic::set
      *
      * @param args Constructor arguments for the value.
+     *
+     * @returns A boolean indicating whether the given value was set.
      */
     template <typename... Args>
-    inline void set(Args&&... args)
+    inline bool set(Args&&... args)
     {
-        internal_set(T(std::forward<Args>(args)...));
+        return internal_set(T(std::forward<Args>(args)...));
     }
 
     /**
@@ -258,7 +266,7 @@ private:
         Timeout
     };
 
-    void internal_set(T&& value)
+    bool internal_set(T&& value)
     {
         std::unique_lock lock(m_mutex);
         WaitResult result = wait(lock);
@@ -266,7 +274,7 @@ private:
         case WaitResult::Ok:
             break;
         case WaitResult::Outdated:
-            return;
+            return false;
         case WaitResult::Timeout:
             throw std::runtime_error("a reference is used beyond its lifetime");
         default:
@@ -279,6 +287,7 @@ private:
         }
         m_set_latest = clock::time_point::min();
         m_set_cv.notify_all();
+        return true;
     }
 
     WaitResult wait(std::unique_lock<std::mutex>& lock)
