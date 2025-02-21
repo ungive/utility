@@ -74,14 +74,14 @@ TEST(Atomic, Example)
     std::thread t1([&] {
         auto ref = value.get();
         EXPECT_EQ(1, ref->x);
-        std::this_thread::sleep_for(50ms);
+        std::this_thread::sleep_for(75ms);
     });
     std::thread t2([&] {
-        std::this_thread::sleep_for(20ms);
+        std::this_thread::sleep_for(25ms);
         EXPECT_FALSE(value.set({ 2 })); // blocks
     });
     std::thread t3([&] {
-        std::this_thread::sleep_for(40ms);
+        std::this_thread::sleep_for(50ms);
         EXPECT_TRUE(value.set({ 3 })); // more recent
     });
     t1.join();
