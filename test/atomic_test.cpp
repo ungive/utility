@@ -40,7 +40,8 @@ inline void expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
 {
     static_assert(
         std::is_same_v<std::remove_reference_t<decltype(c)>::WaitCodepath,
-            decltype(path)>);
+            decltype(path)>,
+        "");
 #ifdef WAIT_CODEPATHS
     EXPECT_THAT(c._wait_codepaths(), Contains(path));
 #endif
@@ -213,7 +214,7 @@ TEST(Atomic, GetValueCannotBeModified)
 {
     Atomic<TestValue> c(1);
     auto ref = c.get();
-    static_assert(std::is_const_v<decltype(ref)::element_type>);
+    static_assert(std::is_const_v<decltype(ref)::element_type>, "");
 }
 
 TEST(Atomic, SetDoesNotBlockWhenGetWasNeverCalled)
@@ -434,7 +435,7 @@ TEST(Atomic, WatchIsOnlyCalledWithSuccessfulSetCalls)
 TEST(Atomic, ValueTypeIsTheTypeOfTheValue)
 {
     Atomic<TestValue> c(1);
-    static_assert(std::is_same_v<TestValue, decltype(c)::value_type>);
+    static_assert(std::is_same_v<TestValue, decltype(c)::value_type>, "");
 }
 
 TEST(Atomic, DefaultGetLifetimeIsValuePassedAsTemplateArgument)
@@ -539,7 +540,7 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
             auto n = dist(rng);
             std::this_thread::sleep_for(std::chrono::milliseconds{ n });
             {
-                std::lock_guard lock(mutex);
+                std::lock_guard<std::mutex> lock(mutex);
                 n_ready += 1;
                 cv.notify_one();
             }
@@ -548,7 +549,7 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
         }));
     }
     {
-        std::unique_lock lock(mutex);
+        std::unique_lock<std::mutex> lock(mutex);
         auto ok = cv.wait_for(lock, 1s, [&] {
             return n_ready == n_threads;
         });

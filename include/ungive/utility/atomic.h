@@ -28,7 +28,9 @@
 #include <unordered_set>
 #endif
 
-namespace ungive::utility
+namespace ungive
+{
+namespace utility
 {
 
 /**
@@ -226,7 +228,7 @@ public:
      */
     void watch(std::function<void(T const&)> callback)
     {
-        std::lock_guard lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         m_callback = callback;
     }
 
@@ -237,7 +239,7 @@ private:
     {
         assert(valid_lifetime(lifetime));
 
-        std::lock_guard lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         m_refs += 1;
         auto timepoint = clock::now() + lifetime;
         m_set_deadline = std::max(m_set_deadline, timepoint);
@@ -246,7 +248,7 @@ private:
         auto destructor =
             std::bind(&self_type::get_dtor_tracking, this, timepoint);
         {
-            std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard<std::mutex> lock(m_lifetime_mutex);
             m_lifetime_expirations.insert(timepoint);
             m_lifetime_update = true;
             m_lifetime_cv.notify_all();
@@ -274,7 +276,7 @@ private:
 
     bool internal_set(T&& value)
     {
-        std::unique_lock lock(m_mutex);
+        std::unique_lock<std::mutex> lock(m_mutex);
         WaitResult result = wait(lock);
         switch (result) {
         case WaitResult::Ok:
@@ -505,7 +507,7 @@ public:
     // Records lifetime errors instead of causing assertion errors.
     void _record_lifetime_history()
     {
-        std::lock_guard lock(m_lifetime_mutex);
+        std::lock_guard<std::mutex> lock(m_lifetime_mutex);
         m_lifetime_record_history = true;
     }
 
@@ -513,7 +515,7 @@ public:
     inline decltype(m_lifetime_history)::value_type
     _await_lifetime_history_entry()
     {
-        std::unique_lock lock(m_lifetime_mutex);
+        std::unique_lock<std::mutex> lock(m_lifetime_mutex);
         m_lifetime_history_cv.wait_for(lock, std::chrono::seconds{ 1 }, [this] {
             return !m_lifetime_history.empty();
         });
@@ -534,7 +536,7 @@ private:
 
     void track_lifetimes()
     {
-        std::unique_lock lock(m_lifetime_mutex);
+        std::unique_lock<std::mutex> lock(m_lifetime_mutex);
         while (!m_lifetime_stop) {
             auto timepoint = clock::time_point::max();
             if (!m_lifetime_expirations.empty()) {
@@ -593,7 +595,7 @@ private:
     void get_dtor_tracking(clock::time_point timepoint)
     {
         {
-            std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard<std::mutex> lock(m_lifetime_mutex);
             auto it = m_lifetime_expirations.find(timepoint);
             if (it != m_lifetime_expirations.end()) {
                 // Only erase one item with this value, not all.
@@ -607,7 +609,7 @@ private:
     void stop_lifetime_thread()
     {
         {
-            std::lock_guard lock(m_lifetime_mutex);
+            std::lock_guard<std::mutex> lock(m_lifetime_mutex);
             if (m_lifetime_stop) {
                 return;
             }
@@ -619,7 +621,8 @@ private:
 #endif // TRACK_LIFETIMES
 };
 
-} // namespace ungive::utility
+} // namespace utility
+} // namespace ungive
 
 #ifndef UNGIVE_UTILITY_TEST
 #ifdef TRACK_LIFETIMES

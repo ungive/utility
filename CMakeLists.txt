@@ -6,7 +6,7 @@ option(UNGIVE_UTILITY_BUILD_TESTS "Build tests" OFF)
 add_library(ungive_utility INTERFACE)
 target_include_directories(ungive_utility INTERFACE ./include)
 
-set_property(TARGET ungive_utility PROPERTY CXX_STANDARD 17)
+set_property(TARGET ungive_utility PROPERTY CXX_STANDARD 11)
 set_property(TARGET ungive_utility PROPERTY CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(UNGIVE_UTILITY_BUILD_TESTS)
@@ -25,7 +25,7 @@ if(UNGIVE_UTILITY_BUILD_TESTS)
         ungive_utility_test PRIVATE ${gtest_SOURCE_DIR}/include
                                     ${gtest_SOURCE_DIR})
 
-    set_property(TARGET ungive_utility_test PROPERTY CXX_STANDARD 17)
+    set_property(TARGET ungive_utility_test PROPERTY CXX_STANDARD 11)
     set_property(TARGET ungive_utility_test PROPERTY CMAKE_CXX_STANDARD_REQUIRED
                                                      ON)
 
