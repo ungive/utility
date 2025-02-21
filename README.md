@@ -8,7 +8,7 @@ Read the documentation and tests for usage instructions.
 
 ---
 
-### LiveValue - ungive/update/live_value.h
+### LiveValue - ungive/utility/live_value.h
 
 `LiveValue` is a class that wraps a value of any type (even structs)
 and provides thread-safe concurrent access to that value
