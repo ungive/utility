@@ -25,7 +25,8 @@ Atomic<Data> value;
 // all of the following statements are thread-safe:
 value.watch([](Data const& data) {
     // this is called with each successful set() call
-    data.x; // yields 3 with the last set() call
+    // the respective set call returns when this returns
+    data.x; // yields 3 with by last set() call
 });
 // get() blocks any set calls until the return value is destructed
 value.get()->x; // yields 1 (default value)
