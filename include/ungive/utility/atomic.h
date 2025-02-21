@@ -1,4 +1,5 @@
-#pragma once
+#ifndef INCLUDE_UNGIVE_UTILITY_ATOMIC_H_
+#define INCLUDE_UNGIVE_UTILITY_ATOMIC_H_
 
 #include <atomic>
 #include <cassert>
@@ -663,3 +664,5 @@ private:
 #undef WAIT_CODEPATHS
 #endif
 #endif // UNGIVE_UTILITY_TEST
+
+#endif // INCLUDE_UNGIVE_UTILITY_ATOMIC_H_
