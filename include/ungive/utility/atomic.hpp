@@ -112,13 +112,24 @@ public:
 
     Atomic() : Atomic(std::make_shared<T>()) {}
 
+    Atomic(self_type&& atomic)
+        : Atomic(std::make_shared<T>(std::move(*atomic.m_value)))
+    {
+    }
+
+    Atomic(self_type const& atomic)
+        : Atomic(std::make_shared<T>(*atomic.m_value))
+    {
+    }
+
     Atomic(T&& value) : Atomic(std::make_shared<T>(std::move(value))) {}
 
     Atomic(T const& value) : Atomic(std::make_shared<T>(value)) {}
 
-    template <typename... Args>
-    Atomic(Args&&... args)
-        : Atomic(std::make_shared<T>(std::forward<Args>(args)...))
+    template <typename Arg0, typename... Rest>
+    Atomic(Arg0 arg0, Rest&&... rest)
+        : Atomic(std::make_shared<T>(
+              std::forward<Arg0>(arg0), std::forward<Rest>(rest)...))
     {
     }
 

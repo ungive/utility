@@ -22,7 +22,20 @@ struct TestValue
 
     TestValue(int value) : x{ value } {}
 
+    TestValue(int x, int y) : x{ x }, y{ y } {}
+
+    TestValue(TestValue const& other) : x{ other.x } {}
+
+    TestValue(TestValue&& other) : x{ std::move(other.x) } {}
+
+    TestValue& operator=(TestValue const& other)
+    {
+        this->x = other.x;
+        return *this;
+    }
+
     int x{ TEST_VALUE_DEFAULT_X };
+    int y{ 0 };
 };
 
 struct TestValueWithCtor
@@ -91,13 +104,13 @@ TEST(Atomic, Example)
     EXPECT_TRUE(watch_called);
 }
 
-TEST(Atomic, ConstructWithDefaultConstructor)
+TEST(Atomic, ConstructWithValueDefaultConstructor)
 {
     Atomic<TestValue> c;
     EXPECT_EQ(TEST_VALUE_DEFAULT_X, c.get()->x);
 }
 
-TEST(Atomic, ConstructWithMoveConstructor)
+TEST(Atomic, ConstructWithValueMoveConstructor)
 {
     int expected = 102;
     TestValue value{ expected };
@@ -105,18 +118,44 @@ TEST(Atomic, ConstructWithMoveConstructor)
     EXPECT_EQ(expected, c.get()->x);
 }
 
-TEST(Atomic, ConstructWithCopyConstructor)
+TEST(Atomic, ConstructWithValueCopyConstructor)
 {
     TestValue value{ 103 };
     Atomic<TestValue> c(value);
     EXPECT_EQ(value.x, c.get()->x);
 }
 
-TEST(Atomic, ConstructWithInitConstructor)
+TEST(Atomic, ConstructWithValueInitConstructor)
 {
     int expected = 104;
     Atomic<TestValue> c(104);
     EXPECT_EQ(expected, c.get()->x);
+}
+
+TEST(Atomic, ConstructWithMultiArgumentValueInitConstructor)
+{
+    Atomic<TestValue> c(12, 34);
+    EXPECT_EQ(12, c.get()->x);
+    EXPECT_EQ(34, c.get()->y);
+}
+
+TEST(Atomic, ConstructWithCopyConstructor)
+{
+    std::cerr << "1" << std::endl;
+    Atomic<TestValue> c1(1);
+    std::cerr << "2" << std::endl;
+    Atomic<TestValue> c2(c1);
+    std::cerr << "3" << std::endl;
+    c1.set({ 2 });
+    EXPECT_EQ(2, c1.get()->x);
+    EXPECT_EQ(1, c2.get()->x);
+}
+
+TEST(Atomic, ConstructWithMoveConstructor)
+{
+    Atomic<TestValue> c1(234);
+    Atomic<TestValue> c2(std::move(c1));
+    EXPECT_EQ(234, c2.get()->x);
 }
 
 TEST(Atomic, SetBlocksUntilGetReturnValueIsDestructed)
