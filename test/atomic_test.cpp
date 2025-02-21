@@ -31,6 +31,29 @@ struct TestValueWithCtor
     int x{ TEST_VALUE_DEFAULT_X };
 };
 
+TEST(Atomic, Example)
+{
+    struct Data
+    {
+        int x = 1;
+    };
+
+    Atomic<Data> value;
+    bool watch_called{ false };
+
+    // all of the following statements are thread-safe:
+    value.watch([&](Data const& data) {
+        // called during each set() call
+        EXPECT_EQ(2, data.x); // returns 2
+        watch_called = true;
+    });
+    EXPECT_EQ(1, value.get()->x); // returns 1 (blocks any set calls)
+    value.set({ 2 }); // sets x to 2 (blocking)
+    EXPECT_EQ(2, value.get()->x); // returns 2
+    // auto ref = value.get(); // do not do this
+    EXPECT_TRUE(watch_called);
+}
+
 TEST(Atomic, ConstructWithDefaultConstructor)
 {
     Atomic<TestValue> c;
@@ -369,29 +392,6 @@ TEST(Atomic, PassedDefaultGetLifeTimeIsUsedAsLifetimeForGetWithoutArguments)
     auto delta = std::chrono::steady_clock::now() - start;
     EXPECT_GT(delta, c.default_get_lifetime);
     EXPECT_LT(delta, c.default_get_lifetime + 25ms);
-}
-
-TEST(Atomic, Example)
-{
-    struct Data
-    {
-        int x = 1;
-    };
-
-    Atomic<Data> value;
-    bool watch_called{ false };
-
-    // all of the following statements are thread-safe:
-    value.watch([&](Data const& data) {
-        // called during each set() call
-        EXPECT_EQ(2, data.x); // returns 2
-        watch_called = true;
-    });
-    EXPECT_EQ(1, value.get()->x); // returns 1 (blocks any set calls)
-    value.set({ 2 }); // sets x to 2 (blocking)
-    EXPECT_EQ(2, value.get()->x); // returns 2
-    // auto ref = value.get(); // do not do this
-    EXPECT_TRUE(watch_called);
 }
 
 // TODO set() priority? later calls should be prioritized over older  ones!
