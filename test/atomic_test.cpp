@@ -590,5 +590,37 @@ TEST(Atomic, OutdatedAndLatestSetCallsTimeOutAndThrowWhenGetLivesTooLong)
     expect_wait_codepath(c, WaitCodepath::NoSetTimeoutOtherLatest);
 }
 
-// TODO write a test for difficult to trigger codepath: NoSetDelayOtherLatest
-// TODO make _stop_lifetime_tracking a noop when TRACK_LIFETIMES is not defined
+TEST(Atomic, CodePathNoSetDelayOtherLatest)
+{
+    Atomic<TestValue> c(1);
+    // Make sure that the successful set call in thread #3 takes long
+    // and allows thread #2 to trigger code path NoSetDelayOtherLatest.
+    c._sleep_before_set(200ms);
+    std::thread t1([&] {
+        auto ref = c.get(125ms);
+        std::this_thread::sleep_for(100ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(25ms);
+        // This set call will wait and once it hits the deadline will
+        // observe that its "call_time" is neither the same as "m_set_latest"
+        // nor "clock::time_point::min()", since the set call below updates
+        // it to a different value. Since the call below will take very long to
+        // set the value and set "m_set_latest" to "clock::time_point::min()",
+        // this cause the wait operation here to time out, without any updated
+        // deadline and trigger the codepath for NoSetDelayOtherLatest (100).
+        c.set({ 2 });
+    });
+    std::thread t3([&] {
+        // This set call is the more recent call.
+        std::this_thread::sleep_for(50ms);
+        c.set({ 3 });
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    EXPECT_EQ(3, c.get()->x);
+    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
+    expect_wait_codepath(c, WaitCodepath::NoSetDelayOtherLatest);
+    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
+}

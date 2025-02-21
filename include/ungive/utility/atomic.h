@@ -274,6 +274,21 @@ private:
         Timeout
     };
 
+#ifdef UNGIVE_UTILITY_TEST
+    using milliseconds = std::chrono::milliseconds;
+
+public:
+    void _sleep_before_set(milliseconds duration)
+    {
+        assert(duration >= milliseconds::zero());
+        m_sleep_before_set = std::max(duration, milliseconds::zero());
+    }
+
+private:
+    milliseconds m_sleep_before_set{ milliseconds::zero() };
+#endif // UNGIVE_UTILITY_TEST
+
+private:
     bool internal_set(T&& value)
     {
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -289,6 +304,15 @@ private:
             assert(false);
             throw std::runtime_error("impossible case");
         }
+
+#ifdef UNGIVE_UTILITY_TEST
+        if (m_sleep_before_set > milliseconds::zero()) {
+            lock.unlock();
+            std::this_thread::sleep_for(m_sleep_before_set);
+            lock.lock();
+        }
+#endif // UNGIVE_UTILITY_TEST
+
         *m_value = std::move(value);
         if (m_callback) {
             m_callback(*m_value);
