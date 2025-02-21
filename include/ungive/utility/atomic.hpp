@@ -166,6 +166,12 @@ public:
      * The value that is pointed to by the returned value must not be modified.
      * To modify the stored value use the Atomic::set method instead.
      *
+     * Note that accessing struct members with multiple calls to Atomic::get
+     * may lead to member values that are unrelated, since Atomic::set may
+     * been called inbetween Atomic::get calls. The returned pointer should
+     * be temporarily stored, if related data must be read and it is important
+     * that no updates are performed while reading.
+     *
      * @returns A reference-counted pointer to the internally stored value.
      */
     inline std::shared_ptr<const T> get()
