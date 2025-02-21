@@ -8,9 +8,9 @@ Read the documentation and tests for usage instructions.
 
 ---
 
-### LiveValue - ungive/utility/live_value.h
+### Atomic - ungive/utility/atomic.h
 
-`LiveValue` is a class that wraps a value of any type (even structs)
+`Atomic` is a class that wraps a value of any type (even structs)
 and provides thread-safe concurrent access to that value
 by providing a get() method that blocks any set() calls
 until all shared pointers returned by get() are destructed.
