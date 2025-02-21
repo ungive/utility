@@ -10,6 +10,7 @@
 // #define NO_TRACK_LIFETIMES
 #include "ungive/utility/atomic.h"
 
+using namespace testing;
 using namespace ungive::utility;
 using namespace std::chrono_literals;
 
@@ -32,6 +33,18 @@ struct TestValueWithCtor
 
     int x{ TEST_VALUE_DEFAULT_X };
 };
+
+using WaitCodepath = Atomic<TestValue>::WaitCodepath;
+
+inline void expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
+{
+    static_assert(
+        std::is_same_v<std::remove_reference_t<decltype(c)>::WaitCodepath,
+            decltype(path)>);
+#ifdef WAIT_CODEPATHS
+    EXPECT_THAT(c._wait_codepaths(), Contains(path));
+#endif
+}
 
 TEST(Atomic, Example)
 {
@@ -235,6 +248,7 @@ TEST(Atomic, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
     });
     t1.join();
     t2.join();
+    expect_wait_codepath(c, WaitCodepath::UpdatedDeadline);
 }
 
 template <typename U, typename V>
@@ -425,6 +439,8 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCall)
     t3.join();
     t4.join();
     EXPECT_EQ(expected, c.get()->x);
+    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
+    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
 }
 
 TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
@@ -454,6 +470,8 @@ TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
     t2.join();
     t3.join();
     t4.join();
+    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
+    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
 }
 
 TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
@@ -501,6 +519,35 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
         assert(thread.joinable());
         thread.join();
     }
+    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
+    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
 }
 
-// TODO assert which code paths have been executed in set?
+TEST(Atomic, OutdatedAndLatestSetCallsTimeOutAndThrowWhenGetLivesTooLong)
+{
+    Atomic<TestValue> c(1);
+#ifdef TRACK_LIFETIMES
+    c._stop_lifetime_tracking();
+#endif
+    std::thread t1([&] {
+        auto ref = c.get(125ms);
+        std::this_thread::sleep_for(150ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(25ms);
+        EXPECT_ANY_THROW(c.set({ 2 }));
+    });
+    std::thread t3([&] {
+        std::this_thread::sleep_for(75ms);
+        EXPECT_ANY_THROW(c.set({ 3 }));
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    EXPECT_EQ(1, c.get()->x);
+    expect_wait_codepath(c, WaitCodepath::NoSetTimeoutLatest);
+    expect_wait_codepath(c, WaitCodepath::NoSetTimeoutOtherLatest);
+}
+
+// TODO write a test for difficult to trigger codepath: NoSetDelayOtherLatest
+// TODO make _stop_lifetime_tracking a noop when TRACK_LIFETIMES is not defined
