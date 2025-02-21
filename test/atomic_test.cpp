@@ -248,6 +248,7 @@ TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 #ifdef LIFETIME_RECORDING
 TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 {
+    // FIXME this test should run even without lifetime tracking/recording!
     Atomic<TestValue> c(1);
     c._stop_lifetime_tracking();
     auto ref = c.get(100ms);
@@ -345,6 +346,31 @@ TEST(Atomic, WatchCallbackCannotCallInstanceMethods)
     c.set(2);
 }
 
+TEST(Atomic, ValueTypeIsTheTypeOfTheValue)
+{
+    Atomic<TestValue> c(1);
+    static_assert(std::is_same_v<TestValue, decltype(c)::value_type>);
+}
+
+TEST(Atomic, DefaultGetLifetimeIsValuePassedAsTemplateArgument)
+{
+    constexpr size_t value = 4516;
+    Atomic<TestValue, value> c(1);
+    EXPECT_EQ(std::chrono::milliseconds{ value }, c.default_get_lifetime);
+}
+
+TEST(Atomic, PassedDefaultGetLifeTimeIsUsedAsLifetimeForGetWithoutArguments)
+{
+    Atomic<TestValue, 163> c(1);
+    c._stop_lifetime_tracking();
+    auto ref = c.get();
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_ANY_THROW(c.set({ 2 }));
+    auto delta = std::chrono::steady_clock::now() - start;
+    EXPECT_GT(delta, c.default_get_lifetime);
+    EXPECT_LT(delta, c.default_get_lifetime + 25ms);
+}
+
 TEST(Atomic, Example)
 {
     struct Data
@@ -367,3 +393,5 @@ TEST(Atomic, Example)
     // auto ref = value.get(); // do not do this
     EXPECT_TRUE(watch_called);
 }
+
+// TODO set() priority? later calls should be prioritized over older  ones!
