@@ -56,6 +56,8 @@ inline void stop_lifetime_tracking(Atomic<T, D>& c)
 
 TEST(Atomic, Example)
 {
+    // Test for the example code in the README.
+
     struct Data
     {
         int x = 1;
@@ -64,16 +66,27 @@ TEST(Atomic, Example)
     Atomic<Data> value;
     bool watch_called{ false };
 
-    // all of the following statements are thread-safe:
     value.watch([&](Data const& data) {
-        // called during each set() call
-        EXPECT_EQ(2, data.x); // returns 2
+        EXPECT_EQ(3, data.x);
         watch_called = true;
     });
-    EXPECT_EQ(1, value.get()->x); // returns 1 (blocks any set calls)
-    value.set({ 2 }); // sets x to 2 (blocking)
-    EXPECT_EQ(2, value.get()->x); // returns 2
-    // auto ref = value.get(); // do not do this
+    std::thread t1([&] {
+        auto ref = value.get();
+        EXPECT_EQ(1, ref->x);
+        std::this_thread::sleep_for(50ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(20ms);
+        EXPECT_FALSE(value.set({ 2 })); // blocks
+    });
+    std::thread t3([&] {
+        std::this_thread::sleep_for(40ms);
+        EXPECT_TRUE(value.set({ 3 })); // more recent
+    });
+    t1.join();
+    t2.join();
+    t3.join();
+    EXPECT_EQ(3, value.get()->x);
     EXPECT_TRUE(watch_called);
 }
 
