@@ -8,7 +8,7 @@ Read the documentation and tests for usage instructions.
 
 ---
 
-### Atomic <sup>`C++11`</sup> [ungive/utility/atomic.h](./include/ungive/utility/atomic.h)
+### Atomic <sup>`C++11`</sup> [ungive/utility/atomic.hpp](./include/ungive/utility/atomic.h)
 
 `Atomic` is a class that wraps a value of any type (even structs)
 and provides thread-safe concurrent access to that value

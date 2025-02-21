@@ -29,7 +29,7 @@
 #include <unordered_set>
 #endif
 
-#include "detail/unlock_guard.h"
+#include "detail/unlock_guard.hpp"
 
 namespace ungive
 {
