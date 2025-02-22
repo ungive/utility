@@ -108,6 +108,7 @@ private:
     // Represents a destructor for a value returned by Atomic::get.
     // The destructor is a callable that is only called when enabled by a flag
     // and is accompanied by a shared pointer to the atomically wrapped value.
+    // The callable must never throw, as it's called in a destructor.
     struct GetDtor
     {
         GetDtor(std::function<void()>&& callable,
@@ -137,7 +138,6 @@ private:
                 }
 #endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 
-                // FIXME what if this throws?
                 m_callable();
             }
         }
