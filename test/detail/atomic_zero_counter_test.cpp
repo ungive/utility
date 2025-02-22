@@ -105,6 +105,13 @@ TEST(AtomicZeroCounter, LoadReturnsCurrentValue)
     EXPECT_EQ(3, c.load());
 }
 
+TEST(AtomicZeroCounter, ThrowsWhenStopIsCalledTwice)
+{
+    AtomicZeroCounter c;
+    EXPECT_NO_THROW(c.stop());
+    EXPECT_ANY_THROW(c.stop());
+}
+
 TEST(counter_guard, EvaluatesToTrueWhenIncrementSucceeded)
 {
     AtomicZeroCounter c;
