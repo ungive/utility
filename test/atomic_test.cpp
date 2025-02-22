@@ -7,8 +7,12 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-// #define NO_TRACK_LIFETIMES
+// #define UNGIVE_UTILITY_ATOMIC_NO_TRACK_LIFETIMES
 #include "ungive/utility/atomic.hpp"
+
+#ifndef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
+#error Wait codepaths must be enabled in unit tests
+#endif
 
 using namespace testing;
 using namespace ungive::utility;
@@ -47,23 +51,28 @@ struct TestValueWithCtor
     int x{ TEST_VALUE_DEFAULT_X };
 };
 
+#ifdef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 using WaitCodepath = Atomic<TestValue>::WaitCodepath;
 
-inline void expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
+inline void _expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
 {
     static_assert(
         std::is_same_v<std::remove_reference_t<decltype(c)>::WaitCodepath,
             decltype(path)>,
         "");
-#ifdef WAIT_CODEPATHS
     EXPECT_THAT(c._wait_codepaths(), Contains(path));
-#endif
 }
+
+#define expect_wait_codepath(_atomic, _path) \
+    _expect_wait_codepath(_atomic, WaitCodepath::_path)
+#else
+#define expect_wait_codepath(_atomic, _path)
+#endif // UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 
 template <typename T, size_t D>
 inline void stop_lifetime_tracking(Atomic<T, D>& c)
 {
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
     c._stop_lifetime_tracking();
 #endif
 }
@@ -309,7 +318,7 @@ TEST(Atomic, SetBlocksLongEnoughWhenGetIsCalledWhileSetIsBlocking)
     });
     t1.join();
     t2.join();
-    expect_wait_codepath(c, WaitCodepath::UpdatedDeadline);
+    expect_wait_codepath(c, UpdatedDeadline);
 }
 
 template <typename U, typename V>
@@ -339,7 +348,7 @@ TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
     EXPECT_GT(delta, 75ms);
 }
 
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 {
     Atomic<TestValue> c(1);
@@ -357,7 +366,7 @@ TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
     EXPECT_LT(delta, expected_lifetime + 50ms);
 }
 
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 TEST(Atomic, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
 {
     using namespace std::chrono;
@@ -422,8 +431,8 @@ TEST(Atomic, LifetimeTrackingCausesDeathWhenMultipleGetsLiveTooLong)
         thread.join();
     }
 }
-#endif // LIFETIME_RECORDING
-#endif // TRACK_LIFETIMES
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 
 TEST(Atomic, SetCallsWatchCallback)
 {
@@ -521,8 +530,8 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCall)
     t3.join();
     t4.join();
     EXPECT_EQ(expected, c.get()->x);
-    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
-    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
+    expect_wait_codepath(c, SetWithLatestData);
+    expect_wait_codepath(c, NoSetWithOutdatedData);
 }
 
 TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
@@ -552,8 +561,8 @@ TEST(Atomic, ContainsDataFromLatestSetCallAfterEachOtherBlockingSetReturned)
     t2.join();
     t3.join();
     t4.join();
-    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
-    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
+    expect_wait_codepath(c, SetWithLatestData);
+    expect_wait_codepath(c, NoSetWithOutdatedData);
 }
 
 TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
@@ -601,8 +610,8 @@ TEST(Atomic, SetPrioritizesDataFromTheLatestCallWithManyThreads)
         assert(thread.joinable());
         thread.join();
     }
-    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
-    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
+    expect_wait_codepath(c, SetWithLatestData);
+    expect_wait_codepath(c, NoSetWithOutdatedData);
 }
 
 TEST(Atomic, OutdatedAndLatestSetCallsTimeOutAndThrowWhenGetLivesTooLong)
@@ -625,8 +634,8 @@ TEST(Atomic, OutdatedAndLatestSetCallsTimeOutAndThrowWhenGetLivesTooLong)
     t2.join();
     t3.join();
     EXPECT_EQ(1, c.get()->x);
-    expect_wait_codepath(c, WaitCodepath::NoSetTimeoutLatest);
-    expect_wait_codepath(c, WaitCodepath::NoSetTimeoutOtherLatest);
+    expect_wait_codepath(c, NoSetTimeoutLatest);
+    expect_wait_codepath(c, NoSetTimeoutOtherLatest);
 }
 
 TEST(Atomic, CodePathNoSetDelayOtherLatest)
@@ -659,7 +668,7 @@ TEST(Atomic, CodePathNoSetDelayOtherLatest)
     t2.join();
     t3.join();
     EXPECT_EQ(3, c.get()->x);
-    expect_wait_codepath(c, WaitCodepath::SetWithLatestData);
-    expect_wait_codepath(c, WaitCodepath::NoSetDelayOtherLatest);
-    expect_wait_codepath(c, WaitCodepath::NoSetWithOutdatedData);
+    expect_wait_codepath(c, SetWithLatestData);
+    expect_wait_codepath(c, NoSetDelayOtherLatest);
+    expect_wait_codepath(c, NoSetWithOutdatedData);
 }

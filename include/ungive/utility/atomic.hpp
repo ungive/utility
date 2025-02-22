@@ -12,21 +12,30 @@
 #include <utility>
 
 // Track get() lifetimes during debugging.
-#if !defined(NDEBUG) && !defined(NO_TRACK_LIFETIMES)
-#define TRACK_LIFETIMES
+// This should never be enabled in release builds, as lifetime tracking causes
+// assertion errors that would only cause application death in debug builds.
+#if !defined(NDEBUG) && !defined(UNGIVE_UTILITY_ATOMIC_NO_TRACK_LIFETIMES)
+#define UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 #include <set>
+#elif defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES)
+#undef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 #endif
 
-// Enable lifetime recording with unit tests.
-#if defined(TRACK_LIFETIMES) && defined(UNGIVE_UTILITY_TEST)
-#define LIFETIME_RECORDING
+// Enable lifetime recording with lifetime tracking in unit tests.
+#if defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES) && \
+    defined(UNGIVE_UTILITY_TEST)
+#define UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 #include <deque>
+#elif defined(UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING)
+#undef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 #endif
 
 // Track wait codepaths with unit tests.
 #if defined(UNGIVE_UTILITY_TEST)
-#define WAIT_CODEPATHS
+#define UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #include <unordered_set>
+#elif defined(UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS)
+#undef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #endif
 
 #include "detail/unlock_guard.hpp"
@@ -47,7 +56,7 @@ namespace utility
  *
  * The default get lifetime is sufficiently high to loosely guarantee that
  * Atomic::set will never throw an exception when pointers returned by
- * Atomic::get are used in the way that is required in its documentation.
+ * Atomic::get are used in the way that is recommended in its documentation.
  *
  * @tparam T The value type.
  * @tparam DefaultGetLifetimeMillis The default lifetime
@@ -73,31 +82,39 @@ private:
     // and is accompanied by a shared pointer to the atomically wrapped value.
     struct GetDestructor
     {
-        GetDestructor(std::function<void()> callable,
-            std::shared_ptr<std::atomic<bool>> flag,
-            std::shared_ptr<const T> value)
-            : m_callable{ callable }, m_flag{ flag }, m_value_ref{ value }
+        GetDestructor(std::function<void()>&& callable,
+            std::shared_ptr<std::atomic<bool>> const& flag,
+            std::shared_ptr<const T> const& value)
+            : m_callable{ std::move(callable) }, m_flag{ flag },
+              m_value{ value }
         {
             assert(m_callable != nullptr);
             assert(m_flag != nullptr);
+            assert(m_value != nullptr);
         }
 
         inline void operator()() const
         {
             if (m_flag->load()) {
+                // FIXME What if the loaded flag is true, then set to false
+                // and the callable is called while the Atomic instance is
+                // already destructed? If m_flag contains false after the
+                // call to the callable has returned, then there is potential
+                // for use of deleted memory.
+
                 m_callable();
             }
         }
 
     private:
-        const std::shared_ptr<std::atomic<bool>> m_flag{ nullptr };
         const std::function<void()> m_callable{ nullptr };
-        const std::shared_ptr<const T> m_value_ref{ nullptr };
+        const std::shared_ptr<std::atomic<bool>> m_flag{ nullptr };
+        const std::shared_ptr<const T> m_value{ nullptr };
     };
 
     Atomic(std::shared_ptr<T>&& ptr) : m_value{ std::move(ptr) }
     {
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
         m_lifetime_thread = std::thread(&Atomic::track_lifetimes, this);
 #endif
     }
@@ -139,14 +156,15 @@ public:
         // be called anymore, since this class instance is now destroyed.
         m_active->store(false);
 
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
         stop_lifetime_thread();
 
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
         // There should be no errors left in the history.
         assert(m_lifetime_history.empty());
-#endif // LIFETIME_RECORDING
-#endif // TRACK_LIFETIMES
+
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
     }
 
     /**
@@ -261,21 +279,21 @@ private:
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_refs += 1;
-        auto timepoint = clock::now() + lifetime;
-        m_set_deadline = std::max(m_set_deadline, timepoint);
+        auto deadline = clock::now() + lifetime;
+        m_set_deadline = std::max(m_set_deadline, deadline);
 
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
         auto destructor =
-            std::bind(&self_type::get_dtor_tracking, this, timepoint);
+            std::bind(&self_type::get_dtor_tracking, this, deadline);
         {
             std::lock_guard<std::mutex> lock(m_lifetime_mutex);
-            m_lifetime_expirations.insert(timepoint);
+            m_lifetime_expirations.insert(deadline);
             m_lifetime_update = true;
             m_lifetime_cv.notify_all();
         }
 #else
         auto destructor = std::bind(&self_type::get_dtor, this);
-#endif // TRACK_LIFETIMES
+#endif // UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 
         // Store a copy of the internal shared pointer alongside
         // the manually wrapped raw pointer so that the reference count
@@ -284,7 +302,7 @@ private:
         // Additionally the active flag ensures that the destructor is only
         // called while this class instance has not been destructed.
         return std::shared_ptr<T>(m_value.get(),
-            std::bind(GetDestructor(destructor, m_active, m_value)));
+            std::bind(GetDestructor(std::move(destructor), m_active, m_value)));
     }
 
     enum class WaitResult
@@ -295,20 +313,27 @@ private:
     };
 
 #ifdef UNGIVE_UTILITY_TEST
-    using milliseconds = std::chrono::milliseconds;
-
 public:
-    void _sleep_before_set(milliseconds duration)
+    // Sets a sleep duration before the actual set operation. Not thread-safe.
+    void _sleep_before_set(std::chrono::milliseconds duration)
     {
-        assert(duration >= milliseconds::zero());
-        m_sleep_before_set = std::max(duration, milliseconds::zero());
+        assert(duration >= std::chrono::milliseconds::zero());
+        m_sleep_before_set = duration;
     }
 
 private:
-    milliseconds m_sleep_before_set{ milliseconds::zero() };
+    std::chrono::milliseconds m_sleep_before_set{
+        std::chrono::milliseconds::zero()
+    };
 #endif // UNGIVE_UTILITY_TEST
 
 private:
+    static inline void fail(const char* message)
+    {
+        assert(false);
+        throw std::runtime_error(message ? message : "");
+    }
+
     bool internal_set(T&& value)
     {
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -321,12 +346,11 @@ private:
         case WaitResult::Timeout:
             throw std::runtime_error("a reference is used beyond its lifetime");
         default:
-            assert(false);
-            throw std::runtime_error("impossible case");
+            fail("impossible case");
         }
 
 #ifdef UNGIVE_UTILITY_TEST
-        if (m_sleep_before_set > milliseconds::zero()) {
+        if (m_sleep_before_set > std::chrono::milliseconds::zero()) {
             detail::unlock_guard<decltype(lock)> unlock(lock);
             std::this_thread::sleep_for(m_sleep_before_set);
         }
@@ -341,14 +365,8 @@ private:
         return true;
     }
 
-#ifdef UNGIVE_UTILITY_TEST
-    // Only make this enum visible in tests.
+#ifdef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 public:
-#else
-private:
-#endif
-    // This should get optimized away in non-test builds,
-    // since neither the type nor its values are used anywhere.
     enum class WaitCodepath
     {
         SetWithLatestData = 0b110,
@@ -359,20 +377,19 @@ private:
         UpdatedDeadline = 0b1000,
     };
 
-#ifdef WAIT_CODEPATHS
-private:
-    std::unordered_set<WaitCodepath> m_wait_codepaths{};
-
-public:
+    // Returns all triggered wait codepaths. Not thread-safe.
     std::unordered_set<WaitCodepath> const& _wait_codepaths() const
     {
         return m_wait_codepaths;
     }
 
+private:
+    std::unordered_set<WaitCodepath> m_wait_codepaths{};
+
 #define wait_codepath(path) m_wait_codepaths.insert(WaitCodepath::path)
 #else
 #define wait_codepath(path)
-#endif // WAIT_CODEPATHS
+#endif // UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 
 private:
     // Returns whether there are no active references and the value can be set.
@@ -385,11 +402,15 @@ private:
     }
 
     // Returns whether there is a latest set call or not.
+    // If false, indicates that a more recent set call has modified the value
+    // any any other set calls should be considered outdated.
     inline bool no_latest_set() const
     {
         return m_set_latest == clock::time_point::min();
     }
 
+    // Waits until the value can be modified in a thread-safe way.
+    // Returns whether the current thread may update the value.
     WaitResult wait(std::unique_lock<std::mutex>& lock)
     {
         clock::time_point call_time{ clock::now() };
@@ -479,8 +500,7 @@ private:
                 assert(call_time != clock::time_point::min());
             }
 
-            assert(false);
-            throw std::runtime_error("impossible state");
+            fail("impossible state");
         }
 
         return ok ? WaitResult::Ok : WaitResult::Timeout;
@@ -523,6 +543,7 @@ private:
                 break;
             }
             auto new_refs = refs - 1;
+            // refs is updated with the current value on failure.
             if (m_refs.compare_exchange_weak(refs, new_refs)) {
                 break;
             }
@@ -549,15 +570,17 @@ private:
 
 #ifdef UNGIVE_UTILITY_TEST
 public:
-    // Returns a copy of the internally stored value.
+    // Returns a copy of the internally stored value. Not thread-safe.
     inline std::shared_ptr<const T> _value() const { return m_value; }
 #endif // UNGIVE_UTILITY_TEST
 
-#ifdef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 public:
+    // Stops the lifetime thread and ensures no assertion errors occur in the
+    // background, when a pointer returned by Atomic::get is stored too long.
     inline void _stop_lifetime_tracking() { stop_lifetime_thread(); }
 
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 private:
     bool m_lifetime_record_history{ false };
     std::condition_variable m_lifetime_history_cv{};
@@ -584,7 +607,7 @@ public:
         m_lifetime_history.pop_front();
         return front;
     }
-#endif // LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 
 private:
     std::thread m_lifetime_thread{};
@@ -603,9 +626,9 @@ private:
                 timepoint = *m_lifetime_expirations.begin();
             }
 
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
             auto start = clock::now();
-#endif // LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 
             m_lifetime_cv.wait_until(lock, timepoint, [this] {
                 return m_lifetime_update || m_lifetime_stop;
@@ -615,7 +638,7 @@ private:
             }
             if (m_lifetime_update) {
                 m_lifetime_update = false;
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
                 if (m_lifetime_record_history) {
                     m_lifetime_history.push_back(std::make_pair(
                         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -623,7 +646,7 @@ private:
                         false));
                     m_lifetime_history_cv.notify_all();
                 }
-#endif // LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
                 continue;
             }
 
@@ -634,7 +657,7 @@ private:
             m_lifetime_expirations.erase(m_lifetime_expirations.begin());
 
             bool assertion_error = true;
-#ifdef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
             if (m_lifetime_record_history) {
                 m_lifetime_history.push_back(std::make_pair(
                     std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -643,7 +666,7 @@ private:
                 m_lifetime_history_cv.notify_all();
                 assertion_error = false;
             }
-#endif // LIFETIME_RECORDING
+#endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 
             if (assertion_error) {
                 // A get key is being used beyond its lifetime.
@@ -652,11 +675,11 @@ private:
         }
     }
 
-    void get_dtor_tracking(clock::time_point timepoint)
+    void get_dtor_tracking(clock::time_point deadline)
     {
         {
             std::lock_guard<std::mutex> lock(m_lifetime_mutex);
-            auto it = m_lifetime_expirations.find(timepoint);
+            auto it = m_lifetime_expirations.find(deadline);
             if (it != m_lifetime_expirations.end()) {
                 // Only erase one item with this value, not all.
                 m_lifetime_expirations.erase(it);
@@ -678,21 +701,21 @@ private:
         }
         m_lifetime_thread.join();
     }
-#endif // TRACK_LIFETIMES
+#endif // UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 };
 
 } // namespace utility
 } // namespace ungive
 
 #ifndef UNGIVE_UTILITY_TEST
-#ifdef TRACK_LIFETIMES
-#undef TRACK_LIFETIMES
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
+#undef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 #endif
-#ifdef LIFETIME_RECORDING
-#undef LIFETIME_RECORDING
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
+#undef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 #endif
-#ifdef WAIT_CODEPATHS
-#undef WAIT_CODEPATHS
+#ifdef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
+#undef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #endif
 #endif // UNGIVE_UTILITY_TEST
 
