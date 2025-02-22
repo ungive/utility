@@ -422,11 +422,10 @@ public:
 private:
     std::unordered_set<WaitCodepath> m_wait_codepaths{};
 
-    // FIXME refactor: this macro name may already be defined
-
-#define wait_codepath(path) m_wait_codepaths.insert(WaitCodepath::path)
+#define ungive_utility_atomic_wait_codepath(path) \
+    m_wait_codepaths.insert(WaitCodepath::path)
 #else
-#define wait_codepath(path)
+#define ungive_utility_atomic_wait_codepath(path)
 #endif // UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 
 private:
@@ -465,7 +464,7 @@ private:
             if (!ok && deadline < m_set_deadline) {
                 // The condition is not satisfied and the deadline was updated.
                 // Since there is more time, simply iterate and wait longer.
-                wait_codepath(UpdatedDeadline);
+                ungive_utility_atomic_wait_codepath(UpdatedDeadline);
                 continue;
             }
 
@@ -478,27 +477,27 @@ private:
             const auto c = no_latest_set();
 
             if (a && b && !c) { // 110: ok
-                wait_codepath(SetWithLatestData);
+                ungive_utility_atomic_wait_codepath(SetWithLatestData);
                 // Data can be set and this set call contains the latest data.
                 assert(ok);
                 break;
 
             } else if (!b && c) { // 001 / 101: ok
-                wait_codepath(NoSetWithOutdatedData);
+                ungive_utility_atomic_wait_codepath(NoSetWithOutdatedData);
                 // Another more recent set call has made its changes,
                 // therefore we can return immediately.
                 assert(ok);
                 return WaitResult::Outdated;
 
             } else if (!a && b && !c) { // 010: timeout
-                wait_codepath(NoSetTimeoutLatest);
+                ungive_utility_atomic_wait_codepath(NoSetTimeoutLatest);
                 // Data cannot be set, but this is the latest set call.
                 // It has timed out and an exception needs to be thrown.
                 assert(!ok);
                 break;
 
             } else if (!a && !b && !c) { // 000: timeout
-                wait_codepath(NoSetTimeoutOtherLatest);
+                ungive_utility_atomic_wait_codepath(NoSetTimeoutOtherLatest);
                 // This set call has timed out and data cannot be set.
                 // Additionally, there is another set call that is more recent
                 // and whose data should be set instead, but since the deadline
@@ -509,7 +508,7 @@ private:
                 break;
 
             } else if (a && !b && !c) { // 100: timeout
-                wait_codepath(NoSetDelayOtherLatest);
+                ungive_utility_atomic_wait_codepath(NoSetDelayOtherLatest);
                 // Data can be set, but there is another set call that
                 // is more recent and whose data should be set instead.
                 // Additionally this set call has timed out
@@ -544,7 +543,7 @@ private:
         return ok ? WaitResult::Ok : WaitResult::Timeout;
     }
 
-#undef wait_codepath
+#undef ungive_utility_atomic_wait_codepath
 
     /**
      * @brief Handler for the destruction of values returned by Atomic::get.
