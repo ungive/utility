@@ -10,8 +10,15 @@
 // #define UNGIVE_UTILITY_ATOMIC_NO_TRACK_LIFETIMES
 #include "ungive/utility/atomic.hpp"
 
-#ifndef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
-#error Wait codepaths must be enabled in unit tests
+#if defined(NDEBUG) && defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES)
+#error Lifetime tracking may not be enabled in release builds
+#endif
+#if !defined(NDEBUG) && !defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES)
+#error Lifetime tracking must be enabled in debug builds
+#endif
+#if !defined(UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS) || \
+    !defined(UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY)
+#error
 #endif
 
 using namespace testing;
