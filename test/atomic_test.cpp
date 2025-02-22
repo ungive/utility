@@ -336,7 +336,6 @@ void log_timestamps(U u, V v)
 
 TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 {
-    // FIXME this test should run even without lifetime tracking/recording!
     Atomic<TestValue> c(1);
     stop_lifetime_tracking(c);
     auto ref = c.get(100ms);
