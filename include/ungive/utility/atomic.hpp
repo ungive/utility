@@ -474,7 +474,7 @@ private:
                 }
                 continue;
 
-            } else if (!a && b && c) { // 011 / 111
+            } else if (b && c) { // 011 / 111
                 // This cannot happen: b and c are mutually exclusive.
                 assert(call_time != clock::time_point::min());
             }
