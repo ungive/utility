@@ -179,7 +179,12 @@ public:
                 assert(false);
                 return;
             }
+            // A negative integer can store every positive integer whose sign
+            // is flipped to make it negative, since the absolute value of the
+            // smallest possible negative integer value is one larger than the
+            // largest possible value of the same integer type.
             auto new_value = -value;
+            assert(value != new_value);
             assert(sgn(new_value) == -1);
             if (m_value.compare_exchange_weak(value, new_value)) {
                 break;
