@@ -375,6 +375,21 @@ public:
 #endif // WAIT_CODEPATHS
 
 private:
+    // Returns whether there are no active references and the value can be set.
+    inline bool can_set() const { return m_refs == 0; }
+
+    // Returns whether the call time represents the latest set call.
+    inline bool is_latest_set(clock::time_point const& call_time) const
+    {
+        return call_time == m_set_latest;
+    }
+
+    // Returns whether there is a latest set call or not.
+    inline bool no_latest_set() const
+    {
+        return m_set_latest == clock::time_point::min();
+    }
+
     WaitResult wait(std::unique_lock<std::mutex>& lock)
     {
         clock::time_point call_time{ clock::now() };
@@ -386,8 +401,7 @@ private:
         while (true) {
             deadline = m_set_deadline;
             ok = m_set_cv.wait_until(lock, deadline, [this, call_time] {
-                return m_refs == 0 && call_time == m_set_latest ||
-                    m_set_latest == clock::time_point::min();
+                return can_set() && is_latest_set(call_time) || no_latest_set();
             });
             if (!ok && deadline < m_set_deadline) {
                 // The condition is not satisfied and the deadline was updated.
@@ -400,9 +414,9 @@ private:
             // In all these cases the deadline was exceeded and has no updates.
             // All cases are ordered by their likelihood.
 
-            auto a = m_refs == 0;
-            auto b = call_time == m_set_latest;
-            auto c = m_set_latest == clock::time_point::min();
+            const auto a = can_set();
+            const auto b = is_latest_set(call_time);
+            const auto c = no_latest_set();
 
             if (a && b && !c) { // 110: ok
                 wait_codepath(SetWithLatestData);
