@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jonas van den Berg
+// All rights reserved.
+
 #ifndef INCLUDE_UNGIVE_UTILITY_ATOMIC_H_
 #define INCLUDE_UNGIVE_UTILITY_ATOMIC_H_
 

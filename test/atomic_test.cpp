@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jonas van den Berg
+// All rights reserved.
+
 #include <chrono>
 #include <random>
 #include <thread>

@@ -50,3 +50,8 @@ Data const& ref = *value.get(); // danger!
 ```
 
 ---
+
+## Copyright
+
+Copyright (c) 2025 Jonas van den Berg  
+All rights reserved.
