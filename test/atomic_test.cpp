@@ -700,3 +700,57 @@ TEST(Atomic, GetReturnValueDestructorDoesNotExecuteWhenAtomicIsDestructed)
     t1.join();
     t2.join();
 }
+
+#include <deque>
+
+#include <benchmark/benchmark.h>
+
+static void BM_AtomicGetSingle(benchmark::State& state)
+{
+    Atomic<TestValue> c(123);
+    for (auto _ : state) {
+        auto p = c.get();
+    }
+}
+
+static void BM_AtomicGetDestructorSingle(benchmark::State& state)
+{
+    Atomic<TestValue> c(123);
+    for (auto _ : state) {
+        state.PauseTiming();
+        {
+            auto p = c.get();
+            state.ResumeTiming();
+        }
+    }
+}
+
+static void BM_AtomicGetMultiple(benchmark::State& state)
+{
+    Atomic<TestValue> c(123);
+    std::deque<std::shared_ptr<const TestValue>> ptrs;
+    for (auto _ : state) {
+        auto p = c.get();
+        state.PauseTiming();
+        if (ptrs.size() >= size_t(state.range(0))) {
+            ptrs.pop_front();
+        }
+        ptrs.emplace_back(std::move(p));
+        state.ResumeTiming();
+    }
+}
+
+static void BM_AtomicSet(benchmark::State& state)
+{
+    Atomic<TestValue> c(123);
+    for (auto _ : state) {
+        c.set(456);
+    }
+}
+
+BENCHMARK(BM_AtomicGetSingle);
+BENCHMARK(BM_AtomicGetDestructorSingle);
+BENCHMARK(BM_AtomicGetMultiple)->RangeMultiplier(8)->Range(8, 8 << 10);
+BENCHMARK(BM_AtomicSet);
+
+TEST(Atomic, Benchmarks) { ::benchmark::RunSpecifiedBenchmarks(); }

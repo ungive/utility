@@ -18,10 +18,15 @@ if(UNGIVE_UTILITY_BUILD_TESTS)
     set(TEST_SOURCES test/atomic_test.cpp)
     list(APPEND TEST_SOURCES test/detail/atomic_zero_counter_test.cpp)
 
+    # Disable discovery of benchmark tests
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/benchmark EXCLUDE_FROM_ALL)
+
     add_executable(ungive_utility_test ${TEST_SOURCES})
     target_compile_definitions(ungive_utility_test PRIVATE UNGIVE_UTILITY_TEST)
     target_link_libraries(ungive_utility_test ungive_utility)
     target_link_libraries(ungive_utility_test GTest::gmock_main)
+    target_link_libraries(ungive_utility_test benchmark::benchmark)
     target_include_directories(
         ungive_utility_test PRIVATE ${gtest_SOURCE_DIR}/include
                                     ${gtest_SOURCE_DIR})
