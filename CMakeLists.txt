@@ -16,6 +16,7 @@ if(UNGIVE_UTILITY_BUILD_TESTS)
     include(GoogleTest)
     enable_testing()
     set(TEST_SOURCES test/atomic_test.cpp)
+    list(APPEND TEST_SOURCES test/detail/atomic_zero_counter_test.cpp)
 
     add_executable(ungive_utility_test ${TEST_SOURCES})
     target_compile_definitions(ungive_utility_test PRIVATE UNGIVE_UTILITY_TEST)

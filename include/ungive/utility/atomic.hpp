@@ -11,6 +11,8 @@
 #include <type_traits>
 #include <utility>
 
+// TODO refactor: allow defining individual macros and move includes.
+
 // Track get() lifetimes during debugging.
 // This should never be enabled in release builds, as lifetime tracking causes
 // assertion errors that would only cause application death in debug builds.
@@ -38,12 +40,32 @@
 #undef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #endif
 
+// Enable get destructor pre-delay with unit tests.
+#if defined(UNGIVE_UTILITY_TEST)
+#define UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#elif defined(UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY)
+#undef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#endif
+
+#include "detail/atomic_zero_counter.hpp"
 #include "detail/unlock_guard.hpp"
 
 namespace ungive
 {
 namespace utility
 {
+
+#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#define ungive_utility_atomic_template(default_get_lifetime)    \
+    template <typename T,                                       \
+        size_t DefaultGetLifetimeMillis = default_get_lifetime, \
+        size_t GetDtorPreDelayMillis = 0>
+#else
+// No get destructor delay outside of unit tests.
+#define ungive_utility_atomic_template(default_get_lifetime) \
+    template <typename T,                                    \
+        size_t DefaultGetLifetimeMillis = default_get_lifetime>
+#endif
 
 /**
  * @brief Wraps a value that can be updated atomically from multiple threads.
@@ -62,11 +84,17 @@ namespace utility
  * @tparam DefaultGetLifetimeMillis The default lifetime
  * for pointers returned by Atomic::get.
  */
-template <typename T, size_t DefaultGetLifetimeMillis = 10000>
-class Atomic
+ungive_utility_atomic_template(10000) class Atomic
 {
+#undef ungive_utility_atomic_template
+
 private:
+#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+    using self_type =
+        Atomic<T, DefaultGetLifetimeMillis, GetDtorPreDelayMillis>;
+#else
     using self_type = Atomic<T, DefaultGetLifetimeMillis>;
+#endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 
     static constexpr inline bool valid_lifetime(
         std::chrono::milliseconds const& lifetime)
@@ -80,35 +108,43 @@ private:
     // Represents a destructor for a value returned by Atomic::get.
     // The destructor is a callable that is only called when enabled by a flag
     // and is accompanied by a shared pointer to the atomically wrapped value.
-    struct GetDestructor
+    struct GetDtor
     {
-        GetDestructor(std::function<void()>&& callable,
-            std::shared_ptr<std::atomic<bool>> const& flag,
+        GetDtor(std::function<void()>&& callable,
+            std::shared_ptr<detail::AtomicZeroCounter> const& counter,
             std::shared_ptr<const T> const& value)
-            : m_callable{ std::move(callable) }, m_flag{ flag },
+            : m_callable{ std::move(callable) }, m_counter{ counter },
               m_value{ value }
         {
             assert(m_callable != nullptr);
-            assert(m_flag != nullptr);
+            assert(m_counter != nullptr);
             assert(m_value != nullptr);
         }
 
         inline void operator()() const
         {
-            if (m_flag->load()) {
-                // FIXME What if the loaded flag is true, then set to false
-                // and the callable is called while the Atomic instance is
-                // already destructed? If m_flag contains false after the
-                // call to the callable has returned, then there is potential
-                // for use of deleted memory.
+            detail::counter_guard<detail::AtomicZeroCounter> guard(*m_counter);
 
+            // Only call the destructor when the counter was incremented,
+            // i.e. when the originating Atomic class instance has not been
+            // destructed yet and calling the destructor is still possible.
+            if (guard) {
+
+#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+                if (GetDtorPreDelayMillis > 0) {
+                    std::this_thread::sleep_for(
+                        std::chrono::milliseconds{ GetDtorPreDelayMillis });
+                }
+#endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+
+                // FIXME what if this throws?
                 m_callable();
             }
         }
 
     private:
         const std::function<void()> m_callable{ nullptr };
-        const std::shared_ptr<std::atomic<bool>> m_flag{ nullptr };
+        const std::shared_ptr<detail::AtomicZeroCounter> m_counter{ nullptr };
         const std::shared_ptr<const T> m_value{ nullptr };
     };
 
@@ -152,9 +188,9 @@ public:
 
     ~Atomic()
     {
-        // None of the destructors from references returned by get() should
-        // be called anymore, since this class instance is now destroyed.
-        m_active->store(false);
+        // Before performing any instance destruction steps, ensure that no
+        // destructors of pointers returned by get() are executed anymore.
+        m_active->stop();
 
 #ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
         stop_lifetime_thread();
@@ -301,8 +337,8 @@ private:
         // the raw pointer is guaranteed to never point to deleted memory.
         // Additionally the active flag ensures that the destructor is only
         // called while this class instance has not been destructed.
-        return std::shared_ptr<T>(m_value.get(),
-            std::bind(GetDestructor(std::move(destructor), m_active, m_value)));
+        return std::shared_ptr<const T>(m_value.get(),
+            std::bind(GetDtor(std::move(destructor), m_active, m_value)));
     }
 
     enum class WaitResult
@@ -385,6 +421,8 @@ public:
 
 private:
     std::unordered_set<WaitCodepath> m_wait_codepaths{};
+
+    // FIXME refactor: this macro name may already be defined
 
 #define wait_codepath(path) m_wait_codepaths.insert(WaitCodepath::path)
 #else
@@ -543,7 +581,6 @@ private:
                 break;
             }
             auto new_refs = refs - 1;
-            // refs is updated with the current value on failure.
             if (m_refs.compare_exchange_weak(refs, new_refs)) {
                 break;
             }
@@ -564,8 +601,8 @@ private:
 
     // Holds whether this Atomic instance is active and the destructor
     // for references returned by Atomic::get is safe to be called.
-    const std::shared_ptr<std::atomic<bool>> m_active{
-        std::make_shared<std::atomic<bool>>(true)
+    const std::shared_ptr<detail::AtomicZeroCounter> m_active{
+        std::make_shared<detail::AtomicZeroCounter>()
     };
 
 #ifdef UNGIVE_UTILITY_TEST
@@ -716,6 +753,9 @@ private:
 #endif
 #ifdef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #undef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
+#endif
+#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#undef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 #endif
 #endif // UNGIVE_UTILITY_TEST
 

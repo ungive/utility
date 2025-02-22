@@ -69,13 +69,11 @@ inline void _expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
 #define expect_wait_codepath(_atomic, _path)
 #endif // UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 
-template <typename T, size_t D>
-inline void stop_lifetime_tracking(Atomic<T, D>& c)
-{
 #ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
-    c._stop_lifetime_tracking();
+#define stop_lifetime_tracking(_atomic) (_atomic)._stop_lifetime_tracking()
+#else
+#define stop_lifetime_tracking(_atomic)
 #endif
-}
 
 TEST(Atomic, Example)
 {
@@ -671,4 +669,25 @@ TEST(Atomic, CodePathNoSetDelayOtherLatest)
     expect_wait_codepath(c, SetWithLatestData);
     expect_wait_codepath(c, NoSetDelayOtherLatest);
     expect_wait_codepath(c, NoSetWithOutdatedData);
+}
+
+TEST(Atomic, GetReturnValueDestructorDoesNotExecuteWhenAtomicIsDestructed)
+{
+    // Ensure the destructor for values returned by get() has a delay before
+    // actually executing the destructor, such that it will use deleted memory
+    // (if programmed incorrectly).
+    constexpr size_t get_destructor_pre_delay_millis = 250;
+    using AtomicType = Atomic<TestValue, 500, get_destructor_pre_delay_millis>;
+    auto c = std::make_unique<AtomicType>(1);
+    stop_lifetime_tracking(*c);
+    std::thread t1([&] {
+        auto ref = c->get(75ms);
+        std::this_thread::sleep_for(50ms);
+    });
+    std::thread t2([&] {
+        std::this_thread::sleep_for(100ms);
+        c.reset(nullptr);
+    });
+    t1.join();
+    t2.join();
 }
