@@ -11,40 +11,37 @@
 #include <type_traits>
 #include <utility>
 
-// TODO refactor: allow defining individual macros and move includes.
-
 // Track get() lifetimes during debugging.
 // This should never be enabled in release builds, as lifetime tracking causes
 // assertion errors that would only cause application death in debug builds.
 #if !defined(NDEBUG) && !defined(UNGIVE_UTILITY_ATOMIC_NO_TRACK_LIFETIMES)
 #define UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
-#include <set>
-#elif defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES)
-#undef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 #endif
 
 // Enable lifetime recording with lifetime tracking in unit tests.
 #if defined(UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES) && \
     defined(UNGIVE_UTILITY_TEST)
 #define UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
-#include <deque>
-#elif defined(UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING)
-#undef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 #endif
 
 // Track wait codepaths with unit tests.
 #if defined(UNGIVE_UTILITY_TEST)
 #define UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
-#include <unordered_set>
-#elif defined(UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS)
-#undef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
 #endif
 
 // Enable get destructor pre-delay with unit tests.
 #if defined(UNGIVE_UTILITY_TEST)
 #define UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
-#elif defined(UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY)
-#undef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#endif
+
+#ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
+#include <set>
+#endif
+#ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
+#include <deque>
+#endif
+#ifdef UNGIVE_UTILITY_ATOMIC_WAIT_CODEPATHS
+#include <unordered_set>
 #endif
 
 #include "detail/atomic_zero_counter.hpp"
