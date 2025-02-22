@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -56,15 +57,15 @@ namespace utility
 {
 
 #ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
-#define ungive_utility_atomic_template(default_get_lifetime)    \
-    template <typename T,                                       \
-        size_t DefaultGetLifetimeMillis = default_get_lifetime, \
-        size_t GetDtorPreDelayMillis = 0>
+#define ungive_utility_atomic_template(default_get_lifetime)         \
+    template <typename T,                                            \
+        std::size_t DefaultGetLifetimeMillis = default_get_lifetime, \
+        std::size_t GetDtorPreDelayMillis = 0>
 #else
 // No get destructor delay outside of unit tests.
 #define ungive_utility_atomic_template(default_get_lifetime) \
     template <typename T,                                    \
-        size_t DefaultGetLifetimeMillis = default_get_lifetime>
+        std::size_t DefaultGetLifetimeMillis = default_get_lifetime>
 #endif
 
 /**
@@ -572,7 +573,7 @@ private:
      *
      * @returns The old value of the reference counter.
      */
-    size_t decr_refs()
+    std::size_t decr_refs()
     {
         auto refs = m_refs.load();
         while (true) {
@@ -589,7 +590,7 @@ private:
 
     std::mutex m_mutex{};
     std::condition_variable m_set_cv{};
-    std::atomic<size_t> m_refs{ 0 };
+    std::atomic<std::size_t> m_refs{ 0 };
     clock::time_point m_set_deadline{ clock::time_point::min() };
     clock::time_point m_set_latest{ clock::time_point::min() };
     std::function<void(T const&)> m_callback{ nullptr };
