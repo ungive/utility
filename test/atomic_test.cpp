@@ -747,6 +747,42 @@ TEST(Atomic, NoStaticAssertWhenPassingCopyConstructedValueToSetWhileLockingGet)
     c1.set(TestValue(*c2.get()));
 }
 
+TEST(Atomic, SetGetRaceTest)
+{
+    constexpr size_t min_iterations{ 512 };
+    constexpr size_t min_read_attempts{ 64 };
+    Atomic<TestValue> c(0);
+    std::atomic<int> done{ false };
+    std::atomic<int> iterations{ 0 };
+    std::thread t1([&] {
+        for (int i = 0; i < std::numeric_limits<int>::max(); i++) {
+            auto value = i + 1;
+            c.set(value);
+            if (iterations.load() > min_iterations) {
+                done.store(true);
+                return;
+            }
+        }
+        done.store(true);
+        EXPECT_TRUE(false);
+    });
+    std::thread t2([&] {
+        while (!done.load()) {
+            // The value should not change while the pointer lives.
+            auto ptr = c.get();
+            auto expected = ptr->x;
+            for (size_t i = 0; i < min_read_attempts; i++) {
+                std::this_thread::sleep_for(1ns);
+                EXPECT_EQ(expected, ptr->x);
+            }
+            EXPECT_EQ(expected, ptr->x);
+            ptr = nullptr;
+            iterations++;
+        }
+    });
+    t1.join();
+    t2.join();
+}
 
 #include <deque>
 
