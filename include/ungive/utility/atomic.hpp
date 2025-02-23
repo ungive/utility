@@ -268,7 +268,18 @@ public:
      *
      * Returns whether the value has been set or another more recent
      * Action::set call has set a different value from another thread.
-     * When false is returned, the value may be different from the passed on.
+     * When false is returned, the value may be different from the passed one.
+     *
+     * Note a potential for deadlocks when multiple Atomic instances interact!
+     * Calling A.set() with the result of B.get() and B.set() with the result
+     * of A.get() without destroying at least one of the pointers returned by
+     * either get() call could lead to a deadlock, assuming these two
+     * operations are executed in parallel. There are some overloads to set()
+     * that attempt to prevent this from happening in practice, but a more
+     * contrived call such as A.set(T(*B.get())) could still go through.
+     * Generally, Atomic instances should not interact with each other in
+     * this way, but if they have to, make sure one instance is not locked
+     * while calling the Atomic::set method of another.
      *
      * @param value The value to set.
      *
@@ -278,6 +289,21 @@ public:
      * by Atomic::get is used beyond it's promised lifetime.
      */
     inline bool set(T&& value) { return internal_set(std::move(value)); }
+
+    // Passing a const reference to the value type is forbidden due to the
+    // potential for a deadlock, since Atomic::get's return value can be
+    // dereferenced and used as an argument for this overload.
+    inline bool set(T const& value)
+    {
+        static_assert(false, "forbidden due to potential for deadlocks");
+    }
+
+    // Passing a shared_ptr to a const value is forbidden due to the potential
+    // for a deadlock, since Atomic::get's return value is of this exact type.
+    inline bool set(std::shared_ptr<const T> pointer)
+    {
+        static_assert(false, "forbidden due to potential for deadlocks");
+    }
 
     /**
      * @brief Atomically emplaces the internal value with the given arguments.

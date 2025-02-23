@@ -714,6 +714,40 @@ TEST(Atomic, GetReturnValueDestructorDoesNotExecuteWhenAtomicIsDestructed)
     t2.join();
 }
 
+/*/ // Should not compile
+TEST(Atomic, StaticAssertFailsWhenPassingSharedPtrToSet)
+{
+    Atomic<TestValue> c1(0), c2(0);
+    c1.set(c2.get());
+}
+/**/
+
+/*/ // Should not compile
+TEST(Atomic, StaticAssertFailsWhenPassingConstRefToSet)
+{
+    Atomic<TestValue> c1(0), c2(0);
+    c1.set(*c2.get());
+}
+/**/
+
+/*/ // Should not compile
+TEST(Atomic, StaticAssertFailsWhenPassingConstMoveRefToSet)
+{
+    Atomic<TestValue> c1(0), c2(0);
+    c1.set(std::move(*c2.get()));
+}
+/**/
+
+TEST(Atomic, NoStaticAssertWhenPassingCopyConstructedValueToSetWhileLockingGet)
+{
+    // Unfortunately this case cannot be detected with static asserts.
+    // c2 is locked while c1's set() method is executed, which can cause
+    // a deadlock. See the comments in the documentation of Atomic::set.
+    Atomic<TestValue> c1(0), c2(0);
+    c1.set(TestValue(*c2.get()));
+}
+
+
 #include <deque>
 
 #include <benchmark/benchmark.h>
