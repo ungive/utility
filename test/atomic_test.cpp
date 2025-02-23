@@ -261,13 +261,22 @@ TEST(Atomic, DestructingLiveValueBeforeGetReturnValueMaintainsInternalValue)
 TEST(Atomic, GetReturnsChangedValueAfterUpdatingValueWithSet)
 {
     Atomic<TestValue> c(1);
-    c.set({ 2 }); // move
+    c.set({ 2 }); // move temporary
     EXPECT_EQ(2, c.get()->x);
+    EXPECT_EQ(0, c.get()->y);
     TestValue other{ 3 };
-    c.set(other); // const-reference
+    c.set(std::move(other)); // move variable
     EXPECT_EQ(3, c.get()->x);
+    EXPECT_EQ(0, c.get()->y);
+    c.emplace(8, 9); // multiple arguments to construct in-place
+    EXPECT_EQ(8, c.get()->x);
+    EXPECT_EQ(9, c.get()->y);
+    c.emplace(10); // single argument to construct in-place
+    EXPECT_EQ(10, c.get()->x);
+    EXPECT_EQ(0, c.get()->y);
     c.set(4); // forward arguments to constructor
     EXPECT_EQ(4, c.get()->x);
+    EXPECT_EQ(0, c.get()->y);
 }
 
 TEST(Atomic, GetValueCannotBeModified)
