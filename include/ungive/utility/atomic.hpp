@@ -108,7 +108,8 @@ private:
     }
 
     static_assert(Atomic::valid_lifetime(
-        std::chrono::milliseconds{ DefaultGetLifetimeMillis }));
+                      std::chrono::milliseconds{ DefaultGetLifetimeMillis }),
+        "the default get lifetime must be greater zero");
 
     // Represents a destructor for a value returned by Atomic::get.
     // The destructor is a callable that is only called when enabled by a flag
