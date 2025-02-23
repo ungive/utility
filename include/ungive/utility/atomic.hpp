@@ -280,7 +280,7 @@ public:
     inline bool set(T&& value) { return internal_set(std::move(value)); }
 
     /**
-     * @brief Atomically sets the internal value to the given value.
+     * @brief Atomically emplaces the internal value with the given arguments.
      *
      * @see Atomic::set
      *
@@ -289,7 +289,7 @@ public:
      * @returns A boolean indicating whether the given value was set.
      */
     template <typename... Args>
-    inline bool set(Args&&... args)
+    inline bool emplace(Args&&... args)
     {
         return internal_set(T(std::forward<Args>(args)...));
     }
