@@ -57,15 +57,17 @@ namespace utility
 {
 
 #ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
-#define ungive_utility_atomic_template(default_get_lifetime)         \
-    template <typename T,                                            \
-        std::size_t DefaultGetLifetimeMillis = default_get_lifetime, \
-        std::size_t GetDtorPreDelayMillis = 0>
+#define ungive_utility_atomic_template(default_get_lifetime)      \
+    template <typename T,                                         \
+        std::chrono::milliseconds::rep DefaultGetLifetimeMillis = \
+            default_get_lifetime,                                 \
+        std::chrono::milliseconds::rep GetDtorPreDelayMillis = 0>
 #else
 // No get destructor delay outside of unit tests.
-#define ungive_utility_atomic_template(default_get_lifetime) \
-    template <typename T,                                    \
-        std::size_t DefaultGetLifetimeMillis = default_get_lifetime>
+#define ungive_utility_atomic_template(default_get_lifetime)      \
+    template <typename T,                                         \
+        std::chrono::milliseconds::rep DefaultGetLifetimeMillis = \
+            default_get_lifetime>
 #endif
 
 /**
