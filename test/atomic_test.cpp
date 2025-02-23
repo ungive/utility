@@ -38,13 +38,17 @@ struct TestValue
 
     TestValue(int x, int y) : x{ x }, y{ y } {}
 
-    TestValue(TestValue const& other) : x{ other.x } {}
+    TestValue(TestValue const& other) : x{ other.x }, y{ other.y } {}
 
-    TestValue(TestValue&& other) : x{ std::move(other.x) } {}
+    TestValue(TestValue&& other)
+        : x{ std::move(other.x) }, y{ std::move(other.y) }
+    {
+    }
 
     TestValue& operator=(TestValue const& other)
     {
         this->x = other.x;
+        this->y = other.y;
         return *this;
     }
 
