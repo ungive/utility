@@ -92,11 +92,13 @@ ungive_utility_atomic_template(10000) class Atomic
 #undef ungive_utility_atomic_template
 
 private:
-#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+#ifndef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+    using self_type = Atomic<T, DefaultGetLifetimeMillis>;
+#else
     using self_type =
         Atomic<T, DefaultGetLifetimeMillis, GetDtorPreDelayMillis>;
-#else
-    using self_type = Atomic<T, DefaultGetLifetimeMillis>;
+
+    static_assert(GetDtorPreDelayMillis >= 0, "the delay must be positive");
 #endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 
     static constexpr inline bool valid_lifetime(
