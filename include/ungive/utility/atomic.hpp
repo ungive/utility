@@ -298,7 +298,10 @@ public:
 
 private:
     template <typename...>
-    struct always_false { static constexpr bool value = false; };
+    struct always_false
+    {
+        static constexpr bool value = false;
+    };
 
 public:
     // The following forbidden set overloads have to be templated and they have
