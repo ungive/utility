@@ -302,6 +302,7 @@ public:
     inline bool set(T const& value)
     {
         static_assert(false, "forbidden due to potential for deadlocks");
+        return false;
     }
 
     // Passing a shared_ptr to a const value is forbidden due to the potential
@@ -309,6 +310,7 @@ public:
     inline bool set(std::shared_ptr<const T> pointer)
     {
         static_assert(false, "forbidden due to potential for deadlocks");
+        return false;
     }
 
     /**
@@ -562,7 +564,8 @@ private:
                 // after a value update.
                 {
                     detail::unlock_guard<decltype(lock)> unlock(lock);
-                    std::this_thread::sleep_for(100ns);
+                    std::this_thread::sleep_for(
+                        std::chrono::nanoseconds{ 100 });
                 }
                 continue;
 
@@ -665,7 +668,7 @@ public:
     }
 
     // Pops the last lifetime error in the queue.
-    inline decltype(m_lifetime_history)::value_type
+    inline typename decltype(m_lifetime_history)::value_type
     _await_lifetime_history_entry()
     {
         std::unique_lock<std::mutex> lock(m_lifetime_mutex);
@@ -773,6 +776,17 @@ private:
     }
 #endif // UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 };
+
+#ifdef UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
+template <typename T, std::chrono::milliseconds::rep DefaultGetLifetimeMillis,
+    std::chrono::milliseconds::rep GetDtorPreDelayMillis>
+constexpr std::chrono::milliseconds Atomic<T, DefaultGetLifetimeMillis,
+    GetDtorPreDelayMillis>::default_get_lifetime;
+#else
+template <typename T, std::chrono::milliseconds::rep DefaultGetLifetimeMillis>
+constexpr std::chrono::milliseconds
+    Atomic<T, DefaultGetLifetimeMillis>::default_get_lifetime;
+#endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 
 } // namespace utility
 } // namespace ungive

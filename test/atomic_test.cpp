@@ -71,8 +71,8 @@ using WaitCodepath = Atomic<TestValue>::WaitCodepath;
 inline void _expect_wait_codepath(Atomic<TestValue>& c, WaitCodepath path)
 {
     static_assert(
-        std::is_same_v<std::remove_reference_t<decltype(c)>::WaitCodepath,
-            decltype(path)>,
+        std::is_same<std::remove_reference_t<decltype(c)>::WaitCodepath,
+            decltype(path)>::value,
         "");
     EXPECT_THAT(c._wait_codepaths(), Contains(path));
 }
@@ -283,7 +283,7 @@ TEST(Atomic, GetValueCannotBeModified)
 {
     Atomic<TestValue> c(1);
     auto ref = c.get();
-    static_assert(std::is_const_v<decltype(ref)::element_type>, "");
+    static_assert(std::is_const<decltype(ref)::element_type>::value, "");
 }
 
 TEST(Atomic, SetDoesNotBlockWhenGetWasNeverCalled)
@@ -503,7 +503,7 @@ TEST(Atomic, WatchIsOnlyCalledWithSuccessfulSetCalls)
 TEST(Atomic, ValueTypeIsTheTypeOfTheValue)
 {
     Atomic<TestValue> c(1);
-    static_assert(std::is_same_v<TestValue, decltype(c)::value_type>, "");
+    static_assert(std::is_same<TestValue, decltype(c)::value_type>::value, "");
 }
 
 TEST(Atomic, DefaultGetLifetimeIsValuePassedAsTemplateArgument)

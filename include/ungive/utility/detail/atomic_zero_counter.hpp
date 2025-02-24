@@ -222,6 +222,9 @@ private:
     std::promise<bool> m_promise{};
 };
 
+template <typename V>
+constexpr V AtomicZeroCounter<V>::fail;
+
 /**
  * @brief Increments a counter and decrements when it goes out of scope.
  *
@@ -248,8 +251,10 @@ private:
     // Return value of incr() that indicates operation failure.
     static constexpr R incr_fail = C::fail;
 
-    static_assert(std::is_same<std::decay<R>::type,
-                      std::decay<decltype(((C*)nullptr)->incr())>::type>::value,
+    static_assert(
+        std::is_same<typename std::decay<R>::type,
+            typename std::decay<decltype(std::declval<C>().incr())>::type>::
+            value,
         "the fail value type and the incr return type must be identical");
 
 public:
