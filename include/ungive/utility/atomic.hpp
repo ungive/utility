@@ -8,7 +8,6 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
-#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -347,6 +346,7 @@ private:
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_refs += 1;
+        assert(m_refs > 0);
         auto deadline = clock::now() + lifetime;
         m_set_deadline = std::max(m_set_deadline, deadline);
 
@@ -591,7 +591,7 @@ private:
 
         auto old_refs = decr_refs();
         if (old_refs <= 1) {
-            assert(old_refs != 0);
+            assert(old_refs > 0);
             m_set_cv.notify_all();
         }
     }
@@ -604,7 +604,7 @@ private:
      *
      * @returns The old value of the reference counter.
      */
-    std::size_t decr_refs()
+    auto decr_refs()
     {
         auto refs = m_refs.load();
         while (true) {
@@ -621,7 +621,7 @@ private:
 
     std::mutex m_mutex{};
     std::condition_variable m_set_cv{};
-    std::atomic<std::size_t> m_refs{ 0 };
+    std::atomic<long long> m_refs{ 0 };
     clock::time_point m_set_deadline{ clock::time_point::min() };
     clock::time_point m_set_latest{ clock::time_point::min() };
     std::function<void(T const&)> m_callback{ nullptr };
