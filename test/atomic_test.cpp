@@ -371,19 +371,19 @@ TEST(Atomic, SetThrowsWhenGetReturnValueLivesBeyondItsLifetime)
 #ifdef UNGIVE_UTILITY_ATOMIC_TRACK_LIFETIMES
 TEST(Atomic, LifetimeTrackingCausesDeathWhenGetReturnValueLivesTooLong)
 {
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+
     Atomic<TestValue> c(1);
     auto expected_lifetime = 156ms;
-    auto start = std::chrono::steady_clock::now();
     EXPECT_DEATH(
         {
             auto ref = c.get(expected_lifetime);
-            std::this_thread::sleep_for(expected_lifetime + 1000ms);
+            std::this_thread::sleep_for(expected_lifetime - 25ms);
+            EXPECT_FALSE(c._lifetime_assertion_failed());
+            std::this_thread::sleep_for(50ms);
+            EXPECT_TRUE(c._lifetime_assertion_failed());
         },
         "");
-    auto delta = std::chrono::steady_clock::now() - start;
-    log_timestamps(delta, expected_lifetime);
-    EXPECT_GT(delta, expected_lifetime);
-    EXPECT_LT(delta, expected_lifetime + 50ms);
 }
 
 #ifdef UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING

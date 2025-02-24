@@ -682,6 +682,13 @@ public:
     }
 #endif // UNGIVE_UTILITY_ATOMIC_LIFETIME_RECORDING
 
+public:
+    bool _lifetime_assertion_failed()
+    {
+        std::lock_guard<std::mutex> lock(m_lifetime_mutex);
+        return m_assertion_failed;
+    }
+
 private:
     std::thread m_lifetime_thread{};
     std::mutex m_lifetime_mutex{};
@@ -689,6 +696,7 @@ private:
     std::multiset<clock::time_point> m_lifetime_expirations{};
     bool m_lifetime_update{ false };
     bool m_lifetime_stop{ false };
+    bool m_assertion_failed{ false };
 
     void track_lifetimes()
     {
@@ -744,6 +752,7 @@ private:
             if (assertion_error) {
                 // A get key is being used beyond its lifetime.
                 assert(false && "a reference is used beyond its lifetime");
+                m_assertion_failed = true;
             }
         }
     }
