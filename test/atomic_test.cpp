@@ -710,7 +710,7 @@ TEST(Atomic, StaticAssertFailsWhenPassingSharedPtrToSet)
     Atomic<TestValue> c1(0), c2(0);
     c1.set(c2.get());
 }
-/**/
+*/
 
 /*/ // Should not compile
 TEST(Atomic, StaticAssertFailsWhenPassingConstRefToSet)
@@ -718,7 +718,7 @@ TEST(Atomic, StaticAssertFailsWhenPassingConstRefToSet)
     Atomic<TestValue> c1(0), c2(0);
     c1.set(*c2.get());
 }
-/**/
+*/
 
 /*/ // Should not compile
 TEST(Atomic, StaticAssertFailsWhenPassingConstMoveRefToSet)
@@ -726,7 +726,7 @@ TEST(Atomic, StaticAssertFailsWhenPassingConstMoveRefToSet)
     Atomic<TestValue> c1(0), c2(0);
     c1.set(std::move(*c2.get()));
 }
-/**/
+*/
 
 TEST(Atomic, NoStaticAssertWhenPassingCopyConstructedValueToSetWhileLockingGet)
 {
