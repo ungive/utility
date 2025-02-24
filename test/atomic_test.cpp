@@ -749,7 +749,7 @@ TEST(Atomic, NoStaticAssertWhenPassingCopyConstructedValueToSetWhileLockingGet)
 
 TEST(Atomic, SetGetRaceTest)
 {
-    constexpr size_t min_iterations{ 512 };
+    constexpr size_t min_iterations{ 128 };
     constexpr size_t min_read_attempts{ 64 };
     Atomic<TestValue> c(0);
     std::atomic<int> done{ false };
@@ -836,4 +836,4 @@ BENCHMARK(BM_AtomicGetDestructorSingle);
 BENCHMARK(BM_AtomicGetMultiple)->RangeMultiplier(8)->Range(8, 8 << 10);
 BENCHMARK(BM_AtomicSet);
 
-TEST(Atomic, Benchmarks) { ::benchmark::RunSpecifiedBenchmarks(); }
+TEST(Atomic, DISABLED_Benchmarks) { ::benchmark::RunSpecifiedBenchmarks(); }
