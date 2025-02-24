@@ -296,20 +296,34 @@ public:
      */
     inline bool set(T&& value) { return internal_set(std::move(value)); }
 
+private:
+    template <typename...>
+    struct always_false { static constexpr bool value = false; };
+
+public:
+    // The following forbidden set overloads have to be templated and they have
+    // to use "always_false". Clang on Mac (and perhaps other compilers) will
+    // always fail to compile, even when these overloads are not used anywhere.
+    // See https://stackoverflow.com/a/34746077
+
     // Passing a const reference to the value type is forbidden due to the
     // potential for a deadlock, since Atomic::get's return value can be
     // dereferenced and used as an argument for this overload.
-    inline bool set(T const& value)
+    template <typename... Args>
+    inline bool set(T const& value, Args&&...)
     {
-        static_assert(false, "forbidden due to potential for deadlocks");
+        static_assert(always_false<Args...>::value,
+            "forbidden due to potential for deadlocks");
         return false;
     }
 
     // Passing a shared_ptr to a const value is forbidden due to the potential
     // for a deadlock, since Atomic::get's return value is of this exact type.
-    inline bool set(std::shared_ptr<const T> pointer)
+    template <typename... Args>
+    inline bool set(std::shared_ptr<const T> pointer, Args&&...)
     {
-        static_assert(false, "forbidden due to potential for deadlocks");
+        static_assert(always_false<Args...>::value,
+            "forbidden due to potential for deadlocks");
         return false;
     }
 
