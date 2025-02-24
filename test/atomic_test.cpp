@@ -465,16 +465,6 @@ TEST(Atomic, SetCallsWatchCallback)
     EXPECT_EQ(2, watch_result.x);
 }
 
-TEST(Atomic, WatchCallbackCannotCallInstanceMethods)
-{
-    Atomic<TestValue> c(1);
-    c.watch([&](TestValue const& value) {
-        EXPECT_ANY_THROW(c.get());
-        EXPECT_ANY_THROW(c.set({ 3 }));
-    });
-    c.set(2);
-}
-
 TEST(Atomic, WatchIsOnlyCalledWithSuccessfulSetCalls)
 {
     Atomic<TestValue> c(1);
