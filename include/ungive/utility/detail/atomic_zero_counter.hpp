@@ -42,20 +42,28 @@ static constexpr int sgn(T value)
  * It offers a AtomicZeroCounter::stop method that prohibits any further
  * increments and blocks until the counter has been decremented back to zero.
  */
-struct AtomicZeroCounter
+template <typename V>
+class AtomicZeroCounter
 {
-    using value_type = intmax_t;
-
 private:
-    static constexpr value_type max_value =
-        std::numeric_limits<value_type>::max();
+    using self_type = AtomicZeroCounter<V>;
 
-    static constexpr value_type zero_delta = 1;
-    static constexpr value_type positive_one = +1;
-    static constexpr value_type negative_one = -1;
+    static_assert(
+        std::is_integral<V>::value, "the value type must be integral");
+    static_assert(std::is_signed<V>::value, "the value type must be signed");
+
+    static constexpr V min_value = std::numeric_limits<V>::min();
+    static constexpr V max_value = std::numeric_limits<V>::max();
+
+    static_assert(max_value > 0 && min_value < 0 && -max_value >= min_value,
+        "every positive value must be representable with a negative sign");
+
+    static constexpr V zero_delta = V(1);
+    static constexpr V positive_one = V(+1);
+    static constexpr V negative_one = V(-1);
 
     // Returns the real counter value of the stored value.
-    static inline value_type real(value_type value)
+    static inline V real(V value)
     {
         if (value == 0) {
             assert(false);
@@ -71,12 +79,18 @@ private:
     static_assert(negative_one + zero_delta == 0, "");
 
 public:
+    // The type of the counter value.
+    using value_type = V;
+
+    // Return value of AtomicZeroCounter::incr when the operation failed.
+    static constexpr V fail = -1;
+
     /**
      * @brief Loads the current counter value.
      *
      * @returns The currently stored counter value.
      */
-    value_type load() const { return real(m_value.load()); }
+    V load() const { return real(m_value.load()); }
 
     /**
      * @brief Attempts to increment the counter by 1.
@@ -84,22 +98,21 @@ public:
      * Returns the old counter value, if the operation succeeded.
      * The operation may fail when another thread has called
      * the AtomicZeroCounter::stop method to stop incrementation.
-     * In that case -1 is returned to indicate failure.
+     * In that case AtomicZeroCounter::fail is returned to indicate failure.
      *
-     * @returns The old value or -1, if the operation failed.
+     * @returns The old value or AtomicZeroCounter::fail in case of failure.
      */
-    value_type incr()
+    V incr()
     {
         auto value = m_value.load();
         while (true) {
             auto sign = sgn(value);
             if (sign == -1) {
-                // A negative sign indicates to not increment anymore.
-                return -1;
+                return self_type::fail;
             }
             if (sign == 0) {
                 assert(false);
-                return -1;
+                return self_type::fail;
             }
             assert(sign == +1);
             assert(value != max_value);
@@ -122,7 +135,7 @@ public:
      *
      * @returns The old value of the counter before decrementing.
      */
-    value_type decr()
+    V decr()
     {
         auto value = m_value.load();
         while (true) {
@@ -205,30 +218,40 @@ public:
 
 private:
     // A single atomic guarantees thread-safety and prevents data races.
-    std::atomic<value_type> m_value{ positive_one };
+    std::atomic<V> m_value{ positive_one };
     std::promise<bool> m_promise{};
 };
 
 /**
  * @brief Increments a counter and decrements when it goes out of scope.
  *
- * The counter must have an incr() method that returns a specific value
- * (specified as NotIncrementedResult) when the increment operation fails.
- * The counter must have a decr() method that returns the old value that was
- * stored in the counter before the decrement operation was performed.
- * decr() should always return a value greater than zero, when called
- * after a successful call to incr().
+ * The counter is incremented upon instantiation and decremented when the
+ * counter_guard instance goes out of scope, unless the increment operation
+ * failed, in which case no decrement operation is performed.
+ *
+ * The counter type C must have a member method incr() that returns the value
+ * of the counter type's static data member "fail" when the increment operation
+ * fails and no decrement operation should follow. The counter type must also
+ * have a decr() method that returns the old value of the counter before the
+ * decrement operation was performed. decr() must always return a value
+ * greater than zero, when called after a successful call to incr().
  *
  * @tparam C The counter type.
- * @tparam R The result type of the incr() method.
- * @tparam NotIncrementedResult The return value of failed incr() calls.
  */
-template <typename C,
-    typename R = std::conditional_t<std::is_same_v<C, AtomicZeroCounter>,
-        AtomicZeroCounter::value_type, bool>,
-    R NotIncrementedResult = std::is_same_v<C, AtomicZeroCounter> ? -1 : false>
+template <typename C>
 class counter_guard
 {
+private:
+    // Return type of the counter's incr() method.
+    using R = decltype(C::fail);
+
+    // Return value of incr() that indicates operation failure.
+    static constexpr R incr_fail = C::fail;
+
+    static_assert(std::is_same<std::decay<R>::type,
+                      std::decay<decltype(((C*)nullptr)->incr())>::type>::value,
+        "the fail value type and the incr return type must be identical");
+
 public:
     /**
      * @brief Creates a new counter guard and attempts to increment the counter.
@@ -238,7 +261,7 @@ public:
      * @param counter
      */
     counter_guard(C& counter)
-        : m_counter(counter), m_incr_result{ m_counter.incr() }
+        : m_counter{ counter }, m_incr_result{ m_counter.incr() }
     {
     }
 
@@ -268,10 +291,7 @@ public:
     counter_guard& operator=(const counter_guard&) = delete;
 
 private:
-    inline bool was_incremented() const
-    {
-        return m_incr_result != NotIncrementedResult;
-    }
+    inline bool was_incremented() const { return m_incr_result != incr_fail; }
 
     C& m_counter;
     R m_incr_result;

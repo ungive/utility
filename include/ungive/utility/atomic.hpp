@@ -100,6 +100,8 @@ private:
     static_assert(GetDtorPreDelayMillis >= 0, "the delay must be positive");
 #endif // UNGIVE_UTILITY_ATOMIC_GET_DTOR_PRE_DELAY
 
+    using AtomicZeroCounter = detail::AtomicZeroCounter<long long>;
+
     static constexpr inline bool valid_lifetime(
         std::chrono::milliseconds const& lifetime)
     {
@@ -117,7 +119,7 @@ private:
     struct GetDtor
     {
         GetDtor(std::function<void()>&& callable,
-            std::shared_ptr<detail::AtomicZeroCounter> const& counter,
+            std::shared_ptr<AtomicZeroCounter> const& counter,
             std::shared_ptr<const T> const& value)
             : m_callable{ std::move(callable) }, m_counter{ counter },
               m_value{ value }
@@ -129,7 +131,7 @@ private:
 
         inline void operator()() const
         {
-            detail::counter_guard<detail::AtomicZeroCounter> guard(*m_counter);
+            detail::counter_guard<AtomicZeroCounter> guard(*m_counter);
 
             // Only call the destructor when the counter was incremented,
             // i.e. when the originating Atomic class instance has not been
@@ -149,7 +151,7 @@ private:
 
     private:
         const std::function<void()> m_callable{ nullptr };
-        const std::shared_ptr<detail::AtomicZeroCounter> m_counter{ nullptr };
+        const std::shared_ptr<AtomicZeroCounter> m_counter{ nullptr };
         const std::shared_ptr<const T> m_value{ nullptr };
     };
 
@@ -632,8 +634,8 @@ private:
 
     // Holds whether this Atomic instance is active and the destructor
     // for references returned by Atomic::get is safe to be called.
-    const std::shared_ptr<detail::AtomicZeroCounter> m_active{
-        std::make_shared<detail::AtomicZeroCounter>()
+    const std::shared_ptr<AtomicZeroCounter> m_active{
+        std::make_shared<AtomicZeroCounter>()
     };
 
 #ifdef UNGIVE_UTILITY_TEST

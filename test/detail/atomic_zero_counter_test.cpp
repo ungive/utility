@@ -13,8 +13,11 @@
 #include "ungive/utility/atomic.hpp"
 
 using namespace testing;
-using namespace ungive::utility::detail;
+using namespace ungive::utility;
 using namespace std::chrono_literals;
+
+using AtomicZeroCounter = detail::AtomicZeroCounter<int>;
+using detail::counter_guard;
 
 TEST(AtomicZeroCounter, StopBlocksUntilCounterIsDecrementedToZero)
 {
