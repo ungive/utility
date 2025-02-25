@@ -167,7 +167,7 @@ public:
     using value_type = T;
 
     // The default lifetime for returned get values.
-    static constexpr auto default_get_lifetime =
+    static constexpr std::chrono::milliseconds default_get_lifetime =
         std::chrono::milliseconds{ DefaultGetLifetimeMillis };
 
     Atomic() : Atomic(std::make_shared<T>()) {}
