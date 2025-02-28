@@ -45,8 +45,11 @@ auto point = std::make_pair(ptr->x, ptr->y);
 ptr = nullptr; // destroy the reference
 
 // Absolutely do not do this! The pointer is destructed, which allows set()
-// calls to modify the data. The following reference is not thread-safe.
+// calls to modify the data. The following references are not thread-safe.
+// Always copy by value when the it is needed beyond the pointer's lifetime.
 Data const& ref = *value.get(); // danger!
+int& x_ref = value.get()->x; // danger!
+int x_copy = value.get()->x; // ok
 ```
 
 ---
